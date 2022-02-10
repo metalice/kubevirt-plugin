@@ -1,0 +1,8 @@
+steoates.autoimport
+streetsidesoftware.code-spell-checker
+mhutchie.git-graph
+eamodio.gitlens
+leizongmin.node-module-intellisense
+christian-kohler.npm-intellisense
+redhat.vscode-yaml
+whtouche.vscode-js-console-utils
