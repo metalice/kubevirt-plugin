@@ -109,7 +109,7 @@ export const formatValidationComment = (
 
   if (!allPassed) {
     lines.push('---');
-    lines.push('> Fix the issues above in Jira, then push a new commit or re-edit the PR title to re-run validation.');
+    lines.push('> Fix the issues above in Jira, then comment `/jira-recheck` to re-run validation.');
   }
 
   return lines.join('\n');
