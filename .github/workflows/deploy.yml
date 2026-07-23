@@ -33,6 +33,10 @@ jobs:
           persist-credentials: false
           sparse-checkout: ci-scripts/hot-cluster/ts
 
+      - name: Install infra-script dependencies
+        working-directory: ci-scripts/hot-cluster/ts
+        run: npm ci
+
       - name: Prepare
         working-directory: ci-scripts/hot-cluster/ts
         env:
@@ -113,6 +117,10 @@ jobs:
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
+
+      - name: Install infra-script dependencies
+        working-directory: ci-scripts/hot-cluster/ts
+        run: npm ci
 
       - name: Create manifest list and push
         working-directory: ci-scripts/hot-cluster/ts

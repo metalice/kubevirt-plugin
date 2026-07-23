@@ -54,6 +54,10 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Install infra-script dependencies
+        working-directory: ci-scripts/hot-cluster/ts
+        run: npm ci
+
       - name: Validate cluster_name format
         working-directory: ci-scripts/hot-cluster/ts
         run: npx tsx src/scripts/validate-cluster-name-prefix.ts
