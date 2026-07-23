@@ -1,0 +1,79 @@
+name: Needs Rebase (main advanced)
+
+# main advancing can introduce conflicts in open PRs that their own events
+# can't detect. Re-checks every open PR targeting main via a matrix so each
+# PR's failure is isolated. See needs-rebase.yml for the direct PR path.
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  list-open-prs:
+    name: List Open PRs Targeting main
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      pr_numbers: ${{ steps.list.outputs.pr_numbers }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Setup scripts
+        uses: ./.github/actions/setup-gh-scripts
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+
+      - name: List open PRs targeting main
+        id: list
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        working-directory: .github/scripts
+        run: npx tsx src/merge/list-open-prs.ts
+
+  sync-label:
+    name: Sync Needs-Rebase Label (PR #${{ matrix.pr_number }})
+    needs: list-open-prs
+    if: needs.list-open-prs.outputs.pr_numbers != '[]'
+    strategy:
+      fail-fast: false
+      matrix:
+        pr_number: ${{ fromJson(needs.list-open-prs.outputs.pr_numbers) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    concurrency:
+      group: needs-rebase-${{ matrix.pr_number }}
+      cancel-in-progress: false
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Generate bot token
+        id: bot-token
+        continue-on-error: true
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ secrets.BOT_APP_ID }}
+          private-key: ${{ secrets.BOT_APP_PRIVATE_KEY }}
+          permission-pull-requests: write
+          permission-issues: write
+
+      - name: Setup scripts
+        uses: ./.github/actions/setup-gh-scripts
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+
+      - name: Sync label from mergeable state
+        env:
+          BOT_TOKEN: ${{ steps.bot-token.outputs.token }}
+          GITHUB_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ matrix.pr_number }}
+        working-directory: .github/scripts
+        run: npx tsx src/merge/needs-rebase-entry.ts

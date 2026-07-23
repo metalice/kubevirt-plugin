@@ -130,6 +130,11 @@ jobs:
           persist-credentials: false
           sparse-checkout: ci-scripts/hot-cluster/ts
 
+      - name: Install infra-script dependencies
+        if: inputs.should_run
+        working-directory: ci-scripts/hot-cluster/ts
+        run: npm ci
+
       - name: Probe for cluster
         id: probe
         if: inputs.should_run
@@ -182,6 +187,10 @@ jobs:
         with:
           persist-credentials: false
           sparse-checkout: ci-scripts/hot-cluster
+
+      - name: Install infra-script dependencies
+        working-directory: ci-scripts/hot-cluster/ts
+        run: npm ci
 
       - name: Compute final readiness
         id: compute

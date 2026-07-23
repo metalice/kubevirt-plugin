@@ -65,6 +65,10 @@ jobs:
           persist-credentials: false
           sparse-checkout: ci-scripts/hot-cluster/ts
 
+      - name: Install infra-script dependencies
+        working-directory: ci-scripts/hot-cluster/ts
+        run: npm ci
+
       - name: Discover active clusters
         id: discover
         env:
@@ -85,6 +89,10 @@ jobs:
         with:
           persist-credentials: false
           sparse-checkout: ci-scripts/hot-cluster/ts
+
+      - name: Install infra-script dependencies
+        working-directory: ci-scripts/hot-cluster/ts
+        run: npm ci
 
       - name: Sanitize cluster_name input
         id: sanitize
@@ -118,6 +126,10 @@ jobs:
             .github/scripts
             .github/actions/setup-gh-scripts
             ci-scripts/hot-cluster/ts
+
+      - name: Install infra-script dependencies
+        working-directory: ci-scripts/hot-cluster/ts
+        run: npm ci
 
       - name: Determine idle threshold for this cluster
         id: threshold
