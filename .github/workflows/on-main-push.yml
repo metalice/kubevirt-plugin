@@ -1,21 +1,21 @@
-name: Retest Stale Gating Checks
+name: On Main Push
 
-# Tide-equivalent staleness guard: main advancing invalidates any open PR's
-# completed "Run Gating Tests" result, but the hot-cluster workflow only
-# reacts to the PR's own events. See ci-scripts/README.md ("Check-Run &
-# Retest Model").
+# Consolidated from retest-stale-gating.yml + needs-rebase-on-push.yml.
 #
-# Two tiers, bounded for cost on the shared hot cluster:
-#   - Cheap: mark every open PR's check stale (Checks API only, no cluster time).
-#   - Real: dispatch a retest for merge-pool PRs only, merged with the new
-#     main tip. Pool membership is re-verified fresh in that dispatched run.
+# When main advances, two things need to happen for every open PR:
+#   1. Mark gating checks stale + retest merge-pool PRs (tide-equivalent).
+#   2. Re-check mergeability and sync the needs-rebase label.
+#
+# Both used the same list→matrix fan-out pattern. This workflow shares a
+# single list job, saving one runner and one API paginate call per push.
 on:
   push:
     branches: [main]
 
 permissions:
   contents: read
-  pull-requests: read
+  pull-requests: write
+  issues: write
   checks: write
   actions: write
 
@@ -45,8 +45,9 @@ jobs:
         working-directory: .github/scripts
         run: npx tsx src/merge/stale-gating.ts
 
-  # One matrix job per PR (not a loop) so publish-gating-check runs as a
-  # normal step and one PR's failure (e.g. a deleted fork branch) stays isolated.
+  # ── Stale gating ────────────────────────────────────────────
+  # One matrix job per PR so publish-gating-check runs as a normal step
+  # and one PR's failure (e.g. a deleted fork branch) stays isolated.
   mark-stale:
     name: Mark Stale (PR #${{ matrix.pr_number }})
     needs: list-open-prs
@@ -77,9 +78,6 @@ jobs:
         working-directory: .github/scripts
         run: npx tsx src/merge/stale-mark-check.ts
 
-      # completed/neutral, not queued: a `queued` marker can never be
-      # superseded by a later real result (see publish-gating-check), so it
-      # would sit stuck forever instead of a proper non-passing terminal state.
       - name: Mark check stale
         if: steps.check.outputs.should_mark == 'true'
         uses: ./.github/actions/publish-gating-check
@@ -90,17 +88,6 @@ jobs:
           title: 'Hot Cluster E2E: stale -- main has advanced since this ran'
           summary: ${{ steps.check.outputs.summary }}
 
-      # e2e-passed/e2e-failed mirror the *last real* result (ci-scripts/README.md).
-      # main advancing invalidates that result for every open PR this job
-      # processes, regardless of should_mark -- that output only decides
-      # whether the *check-run* is touched (e.g. left alone while held, or
-      # while a real run is already in flight), not whether the label is
-      # still valid. if: always() so an earlier failure in this same job
-      # (e.g. "Determine whether to (re-)mark this PR stale" or "Mark check
-      # stale" erroring) doesn't also skip this unrelated cleanup -- it only
-      # needs matrix.pr_number, not any output from those steps. Shared with
-      # hot-cluster-e2e-pr-gate.yml via clear-e2e-result-labels (a composite
-      # action's steps run inline, so no new check appears in the merge box).
       - name: Generate bot token
         id: bot-token
         if: always()
@@ -150,3 +137,48 @@ jobs:
           PR_NUMBER: ${{ matrix.pr_number }}
         working-directory: .github/scripts
         run: npx tsx src/merge/stale-dispatch.ts
+
+  # ── Needs-rebase sync ───────────────────────────────────────
+  # main advancing can introduce conflicts that a PR's own events can't
+  # detect. Re-checks every open PR's mergeability and syncs the label.
+  sync-rebase-label:
+    name: Sync Needs-Rebase Label (PR #${{ matrix.pr_number }})
+    needs: list-open-prs
+    if: needs.list-open-prs.outputs.all_pr_numbers != '[]'
+    strategy:
+      fail-fast: false
+      matrix:
+        pr_number: ${{ fromJson(needs.list-open-prs.outputs.all_pr_numbers) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    concurrency:
+      group: needs-rebase-${{ matrix.pr_number }}
+      cancel-in-progress: false
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Generate bot token
+        id: bot-token
+        continue-on-error: true
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ secrets.BOT_APP_ID }}
+          private-key: ${{ secrets.BOT_APP_PRIVATE_KEY }}
+          permission-pull-requests: write
+          permission-issues: write
+
+      - name: Setup scripts
+        uses: ./.github/actions/setup-gh-scripts
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+
+      - name: Sync label from mergeable state
+        env:
+          BOT_TOKEN: ${{ steps.bot-token.outputs.token }}
+          GITHUB_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ matrix.pr_number }}
+        working-directory: .github/scripts
+        run: npx tsx src/merge/needs-rebase-entry.ts
