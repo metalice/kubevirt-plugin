@@ -1,12 +1,11 @@
 name: Auto Merge
 
-# Evaluates merge-pool eligibility and publishes the "Merge Gate" check-run.
-# The job itself always succeeds (green). The real merge blocker is the
-# API-published "Merge Gate" check-run with conclusion: action_required
-# (orange) when not eligible, or success (green) when eligible.
+# Evaluates merge-pool eligibility using the native job check as the gate.
+# When not eligible the job fails (red X) with a step summary explaining why;
+# when eligible it succeeds (green) and enables GitHub auto-merge.
 #
-# Branch protection requires the "Merge Gate" check-run name (API-published),
-# NOT this job's own name.
+# Branch protection requires "Auto Merge / Evaluate Merge Eligibility"
+# (the native job name).
 on:
   pull_request_target:
     types: [opened, labeled, unlabeled, reopened, synchronize]
@@ -15,7 +14,6 @@ permissions:
   contents: read
   pull-requests: write
   actions: read
-  checks: write
 
 jobs:
   evaluate:
@@ -51,7 +49,5 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           BOT_TOKEN: ${{ steps.bot-token.outputs.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
-          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          GITHUB_RUN_ID: ${{ github.run_id }}
         working-directory: .github/scripts
         run: npx tsx src/merge/auto-merge.ts

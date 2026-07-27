@@ -3,7 +3,12 @@
  * Entry point: npx tsx src/merge/auto-merge.ts
  *
  * Required env: GITHUB_TOKEN, BOT_TOKEN (optional), GITHUB_REPOSITORY,
- *               PR_NUMBER, GITHUB_RUN_ID
+ *               PR_NUMBER
+ *
+ * The native job check ("Auto Merge / Evaluate Merge Eligibility") is the
+ * branch-protection required check. When not eligible the job fails (red X)
+ * with a step summary explaining why; when eligible it succeeds (green).
+ * No Checks API calls needed.
  */
 
 import { graphql } from '@octokit/graphql';
@@ -17,7 +22,7 @@ import {
   NEEDS_REBASE_LABEL,
   getMergePoolBlockers,
 } from '../shared/merge-pool';
-import { failStep, setOutput } from '../shared/output';
+import { addStepSummary, failStep } from '../shared/output';
 import { requireEnv } from '../utils';
 
 type Reason = { short: string; long: string };
@@ -67,14 +72,12 @@ const main = async (): Promise<void> => {
   const botToken = process.env.BOT_TOKEN || token;
   const { owner, repo } = getRepoContext();
   const prNumber = Number(requireEnv('PR_NUMBER'));
-  const runId = Number(requireEnv('GITHUB_RUN_ID'));
   const octokit = new Octokit({ auth: token });
 
   let eligible: boolean;
   let nodeId = '';
   let determined = true;
   let reasons: Reason[] = [];
-  let headSha: string;
 
   try {
     const { data: pr } = await octokit.pulls.get({ owner, repo, pull_number: prNumber });
@@ -86,7 +89,6 @@ const main = async (): Promise<void> => {
       blockers.missingApproved,
       blockers.blockingLabels,
     );
-    headSha = pr.head.sha;
     nodeId = pr.node_id;
     console.log(
       `PR #${prNumber} labels: [${pr.labels.map((l) => l.name).join(', ')}] -- merge-pool eligible: ${eligible}`,
@@ -94,59 +96,31 @@ const main = async (): Promise<void> => {
   } catch (err) {
     determined = false;
     eligible = false;
-    headSha = '';
     const msg = err instanceof Error ? err.message : String(err);
     console.warn(
       `Could not determine merge-pool eligibility for PR #${prNumber}: ${msg} -- failing closed.`,
     );
   }
 
-  const conclusion = eligible ? 'success' : 'action_required';
-
-  let title: string;
-  let summary: string;
-
+  // Write a step summary so the details are visible inline in the Actions UI.
   if (!determined) {
-    title = 'Could not determine eligibility';
-    summary = 'Failed to read current PR labels -- failing closed until a later event retries.';
+    addStepSummary(
+      '## Merge Gate\n\n' +
+        ':warning: Could not determine eligibility — failed to read PR labels. ' +
+        'Failing closed until a later event retries.',
+    );
   } else if (eligible) {
-    title = 'Merge-pool eligible';
-    summary = 'PR carries lgtm+approved with no hold/do-not-merge label.';
+    addStepSummary(
+      '## Merge Gate\n\n' +
+        ':white_check_mark: **Merge-pool eligible** — PR carries `lgtm` + `approved` with no blocking labels.',
+    );
   } else {
-    title = `Not eligible: ${reasons.map((r) => r.short).join(', ')}`;
-    summary = reasons.map((r) => `${r.short} -- ${r.long}`).join(' | ');
-  }
-
-  setOutput('determined', String(determined));
-  setOutput('eligible', String(eligible));
-  setOutput('node_id', nodeId);
-  setOutput('number', String(prNumber));
-  setOutput('head_sha', headSha);
-  setOutput('conclusion', conclusion);
-  setOutput('title', title);
-  setOutput('summary', summary);
-
-  // Publish a separate "Merge Gate" check-run via API.
-  // This is the branch-protection required check (not the job's own check).
-  // Uses action_required (orange) when not eligible, success (green) when eligible.
-  const prHeadSha = process.env.PR_HEAD_SHA || headSha;
-  if (prHeadSha) {
-    try {
-      await octokit.checks.create({
-        owner,
-        repo,
-        name: 'Merge Gate',
-        head_sha: prHeadSha,
-        status: 'completed',
-        conclusion,
-        output: { title, summary },
-        details_url: `${process.env.GITHUB_SERVER_URL ?? 'https://github.com'}/${owner}/${repo}/actions/runs/${runId}`,
-      });
-      console.log(`Published "Merge Gate" check-run: ${conclusion} — ${title}`);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      console.warn(`Could not publish Merge Gate check-run: ${msg}`);
-    }
+    const lines = reasons.map((r) => `- **${r.short}** — ${r.long}`);
+    addStepSummary(
+      '## Merge Gate\n\n' +
+        ':x: **Not eligible for merge**\n\n' +
+        lines.join('\n'),
+    );
   }
 
   // Toggle auto-merge via GraphQL
@@ -186,8 +160,11 @@ const main = async (): Promise<void> => {
     }
   }
 
-  // Job always exits 0 — the "Merge Gate" check-run is the real gate, not this job.
-  // Even when not eligible, the job succeeds (green) and the check-run shows orange.
+  // Fail the job when not eligible — the native job check is the branch-protection gate.
+  if (!eligible) {
+    const short = reasons.map((r) => r.short).join(', ');
+    failStep(`Not eligible: ${short || 'could not determine eligibility'}`);
+  }
 };
 
 main().catch((err) => {
