@@ -78,6 +78,14 @@ jobs:
         working-directory: .github/scripts
         run: npx tsx src/merge/stale-mark-check.ts
 
+      - name: Generate bot token
+        id: bot-token
+        if: always()
+        uses: ./.github/actions/create-bot-token
+        with:
+          app-id: ${{ secrets.BOT_APP_ID }}
+          private-key: ${{ secrets.BOT_APP_PRIVATE_KEY }}
+
       - name: Mark check stale
         if: steps.check.outputs.should_mark == 'true'
         uses: ./.github/actions/publish-gating-check
@@ -87,14 +95,7 @@ jobs:
           conclusion: neutral
           title: 'Hot Cluster E2E: stale -- main has advanced since this ran'
           summary: ${{ steps.check.outputs.summary }}
-
-      - name: Generate bot token
-        id: bot-token
-        if: always()
-        uses: ./.github/actions/create-bot-token
-        with:
-          app-id: ${{ secrets.BOT_APP_ID }}
-          private-key: ${{ secrets.BOT_APP_PRIVATE_KEY }}
+          github-token: ${{ steps.bot-token.outputs.token }}
 
       - name: Clear stale e2e-passed/e2e-failed
         if: always()

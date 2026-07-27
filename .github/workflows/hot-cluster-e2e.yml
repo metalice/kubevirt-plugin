@@ -197,6 +197,15 @@ jobs:
       # Closes the window where an older failed check would stay "current" while
       # this run is in progress -- verify-gating-tests supersedes it again on
       # completion. Skipped for a bare ad-hoc dispatch or a failed PR context lookup.
+      - name: Generate bot token for gating check
+        id: gating-bot-token
+        if: always()
+        continue-on-error: true
+        uses: ./.github/actions/create-bot-token
+        with:
+          app-id: ${{ secrets.BOT_APP_ID }}
+          private-key: ${{ secrets.BOT_APP_PRIVATE_KEY }}
+
       - name: Supersede stale "Run Gating Tests" check for this run
         id: supersede-gating-check
         if: |
@@ -213,6 +222,7 @@ jobs:
           title: Hot Cluster E2E is running
           summary: A fresh Hot Cluster E2E run has started for this commit -- see the "Hot Cluster E2E Progress" check for live status.
           details-url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          github-token: ${{ steps.gating-bot-token.outputs.token }}
 
   # should_run gates an untrusted PR dispatch (ad-hoc dispatches always run);
   # run_health_check is ad-hoc-only too, so PR dispatches skip its cost. Folded
@@ -442,6 +452,14 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Generate bot token
+        id: bot-token
+        continue-on-error: true
+        uses: ./.github/actions/create-bot-token
+        with:
+          app-id: ${{ secrets.BOT_APP_ID }}
+          private-key: ${{ secrets.BOT_APP_PRIVATE_KEY }}
+
       - name: Close prepare's check-run as superseded
         continue-on-error: true
         uses: ./.github/actions/publish-gating-check
@@ -451,3 +469,4 @@ jobs:
           conclusion: neutral
           title: 'Hot Cluster E2E: superseded'
           summary: This run was cancelled -- superseded by a newer Hot Cluster E2E run for this PR. See the newer run for the current result.
+          github-token: ${{ steps.bot-token.outputs.token }}

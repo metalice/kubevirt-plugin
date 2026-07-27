@@ -101,7 +101,7 @@ const main = async (): Promise<void> => {
   // 4. Publish "Run Gating Tests" check-run
   let publishedCheckRunId = 0;
   try {
-    publishedCheckRunId = await publishCheckRun(octokit, {
+    publishedCheckRunId = await publishCheckRun(botOctokit, {
       owner,
       repo,
       name: 'Run Gating Tests',
@@ -153,7 +153,7 @@ const main = async (): Promise<void> => {
   if (publishedCheckRunId > 0) {
     try {
       const closed = await closeOrphanedCheckRuns(
-        octokit,
+        botOctokit,
         owner,
         repo,
         prHeadSha,

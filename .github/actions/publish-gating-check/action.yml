@@ -47,6 +47,13 @@ inputs:
     description: Check-run name (only used when creating a fresh check-run)
     required: false
     default: 'Run Gating Tests'
+  github-token:
+    description: |
+      Token to create/update the check-run with. Use a bot App token so the
+      check-run gets its own check-suite and isn't grouped under an unrelated
+      workflow in the PR checks UI. Falls back to the default GITHUB_TOKEN.
+    required: false
+    default: ''
 
 outputs:
   check-run-id:
@@ -69,6 +76,7 @@ runs:
         CHECK_DETAILS_URL: ${{ inputs['details-url'] }}
         CHECK_NAME: ${{ inputs.name }}
       with:
+        github-token: ${{ inputs.github-token || github.token }}
         script: |
           const output = {
             title: process.env.CHECK_TITLE,
