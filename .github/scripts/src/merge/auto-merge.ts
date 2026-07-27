@@ -129,10 +129,13 @@ const main = async (): Promise<void> => {
   // Publish a separate "Merge Gate" check-run via API.
   // This is the branch-protection required check (not the job's own check).
   // Uses action_required (orange) when not eligible, success (green) when eligible.
+  // Created with the bot App token so it gets its own check-suite and isn't
+  // visually grouped under an unrelated workflow in the PR checks UI.
+  const checksOctokit = new Octokit({ auth: botToken });
   const prHeadSha = process.env.PR_HEAD_SHA || headSha;
   if (prHeadSha) {
     try {
-      await octokit.checks.create({
+      await checksOctokit.checks.create({
         owner,
         repo,
         name: 'Merge Gate',

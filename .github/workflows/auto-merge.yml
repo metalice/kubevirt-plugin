@@ -40,6 +40,7 @@ jobs:
           private-key: ${{ secrets.BOT_APP_PRIVATE_KEY }}
           permission-contents: write
           permission-pull-requests: write
+          permission-checks: write
 
       - name: Setup scripts
         uses: ./.github/actions/setup-gh-scripts
