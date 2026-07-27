@@ -38,7 +38,7 @@ jobs:
       # to invalidate). This job only runs while e2e-hold is absent -- see
       # republish-hold's own copy of these two steps for the held case, so
       # a push doesn't leave a stale label stuck for the life of the hold.
-      # Shared with retest-stale-gating.yml via clear-e2e-result-labels
+      # Shared with on-main-push.yml via clear-e2e-result-labels
       # (inline composite steps, no new merge-box check).
       - name: Generate bot token
         id: bot-token
