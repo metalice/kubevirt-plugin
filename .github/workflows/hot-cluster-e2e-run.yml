@@ -332,105 +332,14 @@ jobs:
         env:
           BRIDGE_BASE_ADDRESS: ${{ steps.ci-env.outputs.bridge-base-address }}
           TEST_PROJECT: ${{ inputs.test_project }}
-        run: |
-          if [[ "${TEST_ENGINE}" == "cypress" ]]; then
-            # Cypress only exposes CYPRESS_-prefixed env vars to Cypress.env(...).
-            export CYPRESS_TEST_NS="${TEST_NS}"
-            export CYPRESS_OS_IMAGES_NS="${OS_IMAGES_NS}"
-            export CYPRESS_CNV_NS="${CNV_NS}"
-            export CYPRESS_TEST_SECRET_NAME="${TEST_SECRET_NAME}"
-
-            # release-4.20/4.21's VM patch/stop commands rely on the
-            # runner's current oc project, not an explicit -n flag.
-            oc project "${TEST_NS}"
-            if [[ "${TEST_PROJECT}" == "features" ]]; then
-              npm run test-cypress-headless -- --spec tests/tier1.cy.ts
-            else
-              npm run test-cypress-headless -- --spec tests/gating.cy.ts
-            fi
-          else
-            # Scenario-based Gating project (HC_E2E auth via playwright-runner-hc-e2e.sh).
-            # features is Cypress-only on release branches; Playwright on main has no features project.
-            ./playwright-runner-hc-e2e.sh Gating
-          fi
+        working-directory: ci-scripts/hot-cluster/ts
+        run: npx tsx src/scripts/run-gating-tests.ts
 
       - name: Extract test failure summary
         id: test-summary
         if: always()
-        run: |
-          RESULTS_FILE="playwright/test-results/results.xml"
-          if [[ "${TEST_ENGINE}" != "playwright" || ! -f "${RESULTS_FILE}" ]]; then
-            echo "test_summary=" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          SUMMARY=$(node << 'NODESCRIPT'
-          const fs = require('fs');
-          try {
-            const xml = fs.readFileSync('playwright/test-results/results.xml', 'utf8');
-
-            const decode = (s) => s
-              .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
-              .replace(/&quot;/g, '"').replace(/&apos;/g, "'")
-              .replace(/&#10;/g, ' ').replace(/&#13;/g, '');
-
-            const attr = (el, name) => {
-              const m = el.match(new RegExp(name + '="([^"]*)"'));
-              return m ? decode(m[1]) : '';
-            };
-
-            const root = xml.match(/<testsuites[^>]*>/);
-            const total = root ? attr(root[0], 'tests') : '?';
-            const failed = root ? attr(root[0], 'failures') : '?';
-            const skipped = root ? attr(root[0], 'skipped') : '0';
-            const passed = (total !== '?' && failed !== '?')
-              ? String(Number(total) - Number(failed) - Number(skipped))
-              : '?';
-
-            if (failed === '0') process.exit(0);
-
-            const failures = [];
-            const re = /<testcase\s+([\s\S]*?)>([\s\S]*?)<\/testcase>/g;
-            let m;
-            while ((m = re.exec(xml)) !== null) {
-              if (!m[2].includes('<failure')) continue;
-              const failTag = m[2].match(/<failure\s+([\s\S]*?)(?:\/>|>[\s\S]*?<\/failure>)/);
-              failures.push({
-                name: attr(m[1], 'name'),
-                suite: attr(m[1], 'classname'),
-                msg: failTag ? attr(failTag[1], 'message') : '',
-              });
-            }
-
-            if (failures.length === 0) process.exit(0);
-
-            const MAX = 25;
-            let out = `**${failed}** of **${total}** tests failed, **${passed}** passed`;
-            if (skipped !== '0') out += `, ${skipped} skipped`;
-            out += '\n\n| Test | Error |\n| --- | --- |\n';
-            for (const f of failures.slice(0, MAX)) {
-              const name = f.name.replace(/\|/g, '\\|').replace(/\n/g, ' ');
-              const msg = f.msg.replace(/\|/g, '\\|').replace(/\n/g, ' ').substring(0, 200);
-              out += `| ${name} | ${msg} |\n`;
-            }
-            if (failures.length > MAX) {
-              out += `\n_...and ${failures.length - MAX} more failures (see workflow artifacts for full report)_\n`;
-            }
-            if (out.length > 60000) {
-              out = out.substring(0, 60000) + '\n\n_...truncated_\n';
-            }
-            process.stdout.write(out);
-          } catch (e) {
-            process.exit(0);
-          }
-          NODESCRIPT
-          )
-
-          {
-            echo 'test_summary<<SUMMARY_DELIM'
-            echo "${SUMMARY}"
-            echo 'SUMMARY_DELIM'
-          } >> "$GITHUB_OUTPUT"
+        working-directory: ci-scripts/hot-cluster/ts
+        run: npx tsx src/scripts/extract-test-summary.ts
 
       - name: Upload test artifacts
         if: always()
