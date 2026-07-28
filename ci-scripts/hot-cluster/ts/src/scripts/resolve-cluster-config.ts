@@ -18,90 +18,94 @@ const LAST_CYPRESS_MAJOR = 4;
 const LAST_CYPRESS_MINOR = 22;
 
 export type ClusterConfig = {
+  branchName: string;
   clusterName: string;
-  openshiftVersion: string;
-  testEngine: string;
   cnvChannel: string;
   cnvPinVersion: string;
-  branchName: string;
+  openshiftVersion: string;
+  testEngine: string;
 };
 
 export const resolveClusterConfig = (params: {
   baseRef: string;
   inputClusterName?: string;
+  inputCnvChannel?: string;
   inputOpenshiftVersion?: string;
   inputTestEngine?: string;
-  inputCnvChannel?: string;
 }): ClusterConfig => {
-  const { baseRef, inputClusterName, inputOpenshiftVersion, inputTestEngine, inputCnvChannel } =
+  const { baseRef, inputClusterName, inputCnvChannel, inputOpenshiftVersion, inputTestEngine } =
     params;
 
-  let clusterName: string;
-  let openshiftVersion: string;
-  let testEngine: string;
-  let cnvChannel: string;
-  let cnvPinVersion: string;
+  const releaseMatch = /^release-(\d+)\.(\d+)$/.exec(baseRef);
 
-  const releaseMatch = baseRef.match(/^release-(\d+)\.(\d+)$/);
+  const base = ((): Omit<ClusterConfig, 'branchName'> => {
+    if (releaseMatch) {
+      const major = Number(releaseMatch[1]);
+      const minor = Number(releaseMatch[2]);
+      const clusterName = `kubevirt-plugin-${major}${minor}`;
+      const openshiftVersion = `${major}.${minor}_openshift`;
+      const cnvChannel = DEFAULT_CNV_CHANNEL;
+      const cnvPinVersion = `${major}.${minor}`;
+      const testEngine =
+        major * 1000 + minor <= LAST_CYPRESS_MAJOR * 1000 + LAST_CYPRESS_MINOR
+          ? 'cypress'
+          : 'playwright';
 
-  if (releaseMatch) {
-    const major = Number(releaseMatch[1]);
-    const minor = Number(releaseMatch[2]);
-    clusterName = `kubevirt-plugin-${major}${minor}`;
-    openshiftVersion = `${major}.${minor}_openshift`;
-    cnvChannel = DEFAULT_CNV_CHANNEL;
-    cnvPinVersion = `${major}.${minor}`;
+      console.error(
+        `Base branch '${baseRef}' is a release branch → cluster '${clusterName}' (${openshiftVersion}, CNV channel '${cnvChannel}', pinned to CNV ${cnvPinVersion}.x)`,
+      );
+      console.error(`Base branch '${baseRef}' → test engine '${testEngine}'`);
+      return { clusterName, cnvChannel, cnvPinVersion, openshiftVersion, testEngine };
+    }
 
-    testEngine =
-      major * 1000 + minor <= LAST_CYPRESS_MAJOR * 1000 + LAST_CYPRESS_MINOR
-        ? 'cypress'
-        : 'playwright';
-
+    const clusterName = inputClusterName ?? DEFAULT_CLUSTER_NAME;
+    const openshiftVersion = inputOpenshiftVersion ?? DEFAULT_OPENSHIFT_VERSION;
     console.error(
-      `Base branch '${baseRef}' is a release branch → cluster '${clusterName}' (${openshiftVersion}, CNV channel '${cnvChannel}', pinned to CNV ${cnvPinVersion}.x)`,
+      `Using default/workflow_dispatch cluster config: '${clusterName}' (${openshiftVersion}, CNV channel '${DEFAULT_CNV_CHANNEL}')`,
     );
-    console.error(`Base branch '${baseRef}' → test engine '${testEngine}'`);
-  } else {
-    clusterName = inputClusterName || DEFAULT_CLUSTER_NAME;
-    openshiftVersion = inputOpenshiftVersion || DEFAULT_OPENSHIFT_VERSION;
-    cnvChannel = DEFAULT_CNV_CHANNEL;
-    cnvPinVersion = '';
-    testEngine = DEFAULT_TEST_ENGINE;
-    console.error(
-      `Using default/workflow_dispatch cluster config: '${clusterName}' (${openshiftVersion}, CNV channel '${cnvChannel}')`,
-    );
-  }
+    return {
+      clusterName,
+      cnvChannel: DEFAULT_CNV_CHANNEL,
+      cnvPinVersion: '',
+      openshiftVersion,
+      testEngine: DEFAULT_TEST_ENGINE,
+    };
+  })();
 
-  if (inputTestEngine && inputTestEngine !== 'auto') {
-    testEngine = inputTestEngine;
-    console.error(`Overriding test engine from input: '${testEngine}'`);
-  }
+  const testEngine =
+    inputTestEngine && inputTestEngine !== 'auto'
+      ? ((): string => {
+          console.error(`Overriding test engine from input: '${inputTestEngine}'`);
+          return inputTestEngine;
+        })()
+      : base.testEngine;
 
-  if (inputCnvChannel) {
-    cnvChannel = inputCnvChannel;
-    cnvPinVersion = '';
-    console.error(
-      `Overriding CNV channel from input: '${cnvChannel}' (clearing auto-pinned CNV version)`,
-    );
-  }
+  const { cnvChannel, cnvPinVersion } = inputCnvChannel
+    ? ((): { cnvChannel: string; cnvPinVersion: string } => {
+        console.error(
+          `Overriding CNV channel from input: '${inputCnvChannel}' (clearing auto-pinned CNV version)`,
+        );
+        return { cnvChannel: inputCnvChannel, cnvPinVersion: '' };
+      })()
+    : { cnvChannel: base.cnvChannel, cnvPinVersion: base.cnvPinVersion };
 
   return {
-    clusterName,
-    openshiftVersion,
-    testEngine,
+    branchName: baseRef,
+    clusterName: base.clusterName,
     cnvChannel,
     cnvPinVersion,
-    branchName: baseRef,
+    openshiftVersion: base.openshiftVersion,
+    testEngine,
   };
 };
 
-const main = (): void => {
+const main = async (): Promise<void> => {
   const config = resolveClusterConfig({
     baseRef: process.env.BASE_REF ?? '',
     inputClusterName: process.env.INPUT_CLUSTER_NAME,
+    inputCnvChannel: process.env.INPUT_CNV_CHANNEL,
     inputOpenshiftVersion: process.env.INPUT_OPENSHIFT_VERSION,
     inputTestEngine: process.env.INPUT_TEST_ENGINE,
-    inputCnvChannel: process.env.INPUT_CNV_CHANNEL,
   });
 
   const outputFile = process.env.GITHUB_OUTPUT;
@@ -122,4 +126,7 @@ const main = (): void => {
   appendFileSync(outputFile, lines.join('\n') + '\n');
 };
 
-main();
+void main().catch((err) => {
+  console.error(`::error::${err instanceof Error ? err.message : err}`);
+  process.exit(1);
+});

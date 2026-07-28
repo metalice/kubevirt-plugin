@@ -6,12 +6,12 @@
  *               BASE_DOMAIN, IBM_RESOURCE_GROUP, CONTROL_PLANE_FLAVOR
  */
 
-import { readFileSync, writeFileSync, mkdirSync, copyFileSync } from 'node:fs';
 import { execSync } from 'node:child_process';
+import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 
 import { requireEnv } from '../kube-client';
 
-const main = (): void => {
+const main = async (): Promise<void> => {
   const clusterName = requireEnv('CLUSTER_NAME');
   const zone = requireEnv('ZONE');
   const pullSecret = requireEnv('PULL_SECRET');
@@ -33,24 +33,25 @@ const main = (): void => {
   const ipiWorkerFlavor = workerFlavor.replace(/\./g, '-');
 
   const templatePath = `${githubWorkspace}/ci-scripts/hot-cluster/ipi-install-config.yaml.tpl`;
-  let config = readFileSync(templatePath, 'utf8');
+  const rawConfig = readFileSync(templatePath, 'utf8');
 
   const vars: Record<string, string> = {
-    CLUSTER_NAME: clusterName,
-    VPC_REGION: vpcRegion,
-    IPI_WORKER_FLAVOR: ipiWorkerFlavor,
-    SSH_PUB: sshPub,
     BASE_DOMAIN: baseDomain,
-    IBM_RESOURCE_GROUP: resourceGroup,
+    CLUSTER_NAME: clusterName,
     CONTROL_PLANE_FLAVOR: controlPlaneFlavor,
+    IBM_RESOURCE_GROUP: resourceGroup,
+    IPI_WORKER_FLAVOR: ipiWorkerFlavor,
     PULL_SECRET: pullSecret,
+    SSH_PUB: sshPub,
+    VPC_REGION: vpcRegion,
     WORKER_COUNT: workerCount,
   };
 
-  for (const [key, value] of Object.entries(vars)) {
-    config = config.replaceAll(`\${${key}}`, value);
-    config = config.replace(new RegExp(`\\$${key}\\b`, 'g'), value);
-  }
+  const config = Object.entries(vars).reduce(
+    (acc, [key, value]) =>
+      acc.replaceAll(`\${${key}}`, value).replace(new RegExp(`\\$${key}\\b`, 'g'), value),
+    rawConfig,
+  );
 
   const configPath = `${installDir}/install-config.yaml`;
   writeFileSync(configPath, config);
@@ -64,4 +65,7 @@ const main = (): void => {
   copyFileSync(configPath, `${configPath}.bak`);
 };
 
-main();
+void main().catch((err) => {
+  console.error(`::error::${err instanceof Error ? err.message : err}`);
+  process.exit(1);
+});

@@ -1,30 +1,29 @@
-/* eslint-disable no-console */
 import type { Octokit } from '@octokit/rest';
 
-import { runPathValidation } from './run-validation';
-import type { BuildStatusDescription, PathValidationOutcome } from './run-validation';
-import { HandledValidationError } from './errors';
+import { createOctokit, createStatusOctokit } from '../../github-repo';
+import type { GitHubConfig } from '../../types/index';
+import { safeErrorMessage } from '../../utils';
 import { scanForSuspiciousPatterns } from '../ai-config-validation/checks';
 import { AI_CONFIG } from '../ai-config-validation/constants';
 import { buildStatusDescription as buildAiConfigStatusDescription } from '../ai-config-validation/utils';
 import { CI_SCRIPTS_CONFIG } from '../ci-scripts-validation/constants';
 import { buildStatusDescription as buildCiScriptsStatusDescription } from '../ci-scripts-validation/utils';
-import { createOctokit, createStatusOctokit } from '../../github-repo';
-import { safeErrorMessage } from '../../utils';
-import type { GitHubConfig } from '../../types/index';
+import { HandledValidationError } from './errors';
+import type { BuildStatusDescription, PathValidationOutcome } from './run-validation';
+import { runPathValidation } from './run-validation';
 import type { PathValidationConfig } from './types';
 
 export type PathValidationInput = {
-  config: GitHubConfig;
-  eventAction?: string;
-  headSha?: string;
-  prNumber: number;
   /** The PR's actual base branch -- used only to verify the skip label's applier against OWNERS at that ref. */
   baseBranch: string;
+  config: GitHubConfig;
+  eventAction?: string;
   /** Pre-fetched changed files -- lets a caller running multiple path validations for the same PR share one fetch instead of each doing its own. */
   files?: Array<{ filename: string; patch?: string }>;
+  headSha?: string;
   /** Injectable for tests; default to real Octokit clients built from config. */
   octokit?: Octokit;
+  prNumber: number;
   statusOctokit?: Octokit;
 };
 
@@ -35,31 +34,28 @@ export const executePathValidation = async (
   buildStatusDescription: BuildStatusDescription,
   onFilesFetched?: (files: Array<{ filename: string; patch?: string }>) => void,
 ): Promise<PathValidationOutcome> => {
-  const { config, prNumber, headSha, eventAction, baseBranch, files } = input;
+  const { baseBranch, config, eventAction, files, headSha, prNumber } = input;
   const octokit = input.octokit ?? createOctokit(config);
   const statusOctokit = input.statusOctokit ?? createStatusOctokit(config);
 
-  let outcome: PathValidationOutcome;
-  try {
-    outcome = await runPathValidation(
-      {
-        baseBranch,
-        config,
-        event: { action: eventAction },
-        files,
-        headSha,
-        octokit,
-        prNumber,
-        statusOctokit,
-      },
-      pathConfig,
-      buildStatusDescription,
-      onFilesFetched,
-    );
-  } catch (err) {
+  const outcome: PathValidationOutcome = await runPathValidation(
+    {
+      baseBranch,
+      config,
+      event: { action: eventAction },
+      files,
+      headSha,
+      octokit,
+      prNumber,
+      statusOctokit,
+    },
+    pathConfig,
+    buildStatusDescription,
+    onFilesFetched,
+  ).catch((err) => {
     const message = `${pathConfig.displayName} encountered an unexpected error`;
     throw new HandledValidationError(`${message}: ${safeErrorMessage(err)}`);
-  }
+  });
 
   if (outcome.kind === 'failed') {
     throw new HandledValidationError(
@@ -74,7 +70,7 @@ export const executePathValidation = async (
 export const reportPathValidationError = async (
   _config: GitHubConfig,
   _headSha: string | undefined,
-  _pathConfig: Pick<PathValidationConfig, 'statusContext' | 'displayName'>,
+  _pathConfig: Pick<PathValidationConfig, 'displayName' | 'statusContext'>,
   err: unknown,
 ): Promise<void> => {
   console.error('Unexpected error:', safeErrorMessage(err));
@@ -82,7 +78,9 @@ export const reportPathValidationError = async (
 
 const logSuspiciousMatches = (files: Array<{ filename: string; patch?: string }>): void => {
   const matches = scanForSuspiciousPatterns(files);
-  if (matches.length === 0) return;
+  if (matches.length === 0) {
+    return;
+  }
 
   console.warn('Suspicious patterns detected in AI/editor config diff:');
   for (const match of matches) {

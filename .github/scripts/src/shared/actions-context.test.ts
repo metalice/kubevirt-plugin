@@ -1,15 +1,18 @@
 import assert from 'node:assert/strict';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 
-import { getRepoContext, getRunId, getEventName, getRunUrl } from './actions-context';
+import { getEventName, getRepoContext, getRunId, getRunUrl } from './actions-context';
 
 describe('getRepoContext', () => {
   const KEY = 'GITHUB_REPOSITORY';
   const original = process.env[KEY];
 
   afterEach(() => {
-    if (original === undefined) delete process.env[KEY];
-    else process.env[KEY] = original;
+    if (original === undefined) {
+      delete process.env[KEY];
+    } else {
+      process.env[KEY] = original;
+    }
   });
 
   it('parses owner/repo from GITHUB_REPOSITORY', () => {
@@ -35,8 +38,11 @@ describe('getRunId', () => {
   const original = process.env[KEY];
 
   afterEach(() => {
-    if (original === undefined) delete process.env[KEY];
-    else process.env[KEY] = original;
+    if (original === undefined) {
+      delete process.env[KEY];
+    } else {
+      process.env[KEY] = original;
+    }
   });
 
   it('returns the run ID as a number', () => {
@@ -50,8 +56,11 @@ describe('getEventName', () => {
   const original = process.env[KEY];
 
   afterEach(() => {
-    if (original === undefined) delete process.env[KEY];
-    else process.env[KEY] = original;
+    if (original === undefined) {
+      delete process.env[KEY];
+    } else {
+      process.env[KEY] = original;
+    }
   });
 
   it('returns the event name', () => {
@@ -65,13 +74,18 @@ describe('getRunUrl', () => {
   const keys = ['GITHUB_SERVER_URL', 'GITHUB_REPOSITORY', 'GITHUB_RUN_ID'] as const;
 
   beforeEach(() => {
-    for (const k of keys) saved[k] = process.env[k];
+    for (const key of keys) {
+      saved[key] = process.env[key];
+    }
   });
 
   afterEach(() => {
-    for (const k of keys) {
-      if (saved[k] === undefined) delete process.env[k];
-      else process.env[k] = saved[k];
+    for (const key of keys) {
+      if (saved[key] === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = saved[key];
+      }
     }
   });
 

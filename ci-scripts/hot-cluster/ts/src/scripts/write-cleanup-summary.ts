@@ -6,9 +6,8 @@
  *               CLEAN_VPC, EXPECTED_CLUSTER_COUNT
  */
 
-import { appendFileSync } from 'node:fs';
-
 import { requireEnv } from '../kube-client';
+import { addStepSummary } from '../utils';
 
 const main = async (): Promise<void> => {
   const clusterName = requireEnv('CLUSTER_NAME');
@@ -44,10 +43,10 @@ const main = async (): Promise<void> => {
     lines.push(`Resources matching \`${clusterName}\` have been **deleted**.`);
   }
 
-  appendFileSync(process.env.GITHUB_STEP_SUMMARY!, lines.join('\n') + '\n');
+  addStepSummary(lines.join('\n'));
 };
 
-main().catch((err) => {
+void main().catch((err) => {
   console.error(`::error::${err instanceof Error ? err.message : err}`);
   process.exit(1);
 });

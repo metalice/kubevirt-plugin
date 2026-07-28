@@ -8,7 +8,7 @@
 
 import { appendFileSync } from 'node:fs';
 
-const main = (): void => {
+const main = async (): Promise<void> => {
   const consoleUrl = process.env.CONSOLE_URL ?? '';
   const mode = process.env.MODE ?? 'deploy';
   const isRedeploy = mode === 'redeploy';
@@ -40,7 +40,12 @@ const main = (): void => {
   console.log(output);
 
   const summaryFile = process.env.GITHUB_STEP_SUMMARY;
-  if (summaryFile) appendFileSync(summaryFile, output + '\n');
+  if (summaryFile) {
+    appendFileSync(summaryFile, output + '\n');
+  }
 };
 
-main();
+void main().catch((err) => {
+  console.error(`::error::${err instanceof Error ? err.message : err}`);
+  process.exit(1);
+});

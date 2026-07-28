@@ -5,12 +5,12 @@
  * Required env: IC_API_KEY, INSTALL_DIR
  */
 
-import { existsSync } from 'node:fs';
 import { execSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
 
 import { requireEnv } from '../kube-client';
 
-const main = (): void => {
+const main = async (): Promise<void> => {
   requireEnv('IC_API_KEY');
   const installDir = requireEnv('INSTALL_DIR');
 
@@ -20,12 +20,13 @@ const main = (): void => {
     return;
   }
 
-  let infraId: string;
-  try {
-    infraId = execSync(`jq -r '.infraID' "${metadataPath}"`, { encoding: 'utf8' }).trim();
-  } catch {
-    infraId = 'unknown';
-  }
+  const infraId = ((): string => {
+    try {
+      return execSync(`jq -r '.infraID' "${metadataPath}"`, { encoding: 'utf8' }).trim();
+    } catch {
+      return 'unknown';
+    }
+  })();
 
   console.log(`Job failed — destroying IPI cluster '${infraId}'...`);
   try {
@@ -39,4 +40,7 @@ const main = (): void => {
   console.log('IPI cluster destroyed.');
 };
 
-main();
+void main().catch((err) => {
+  console.error(`::error::${err instanceof Error ? err.message : err}`);
+  process.exit(1);
+});

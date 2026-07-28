@@ -200,7 +200,7 @@ jobs:
         working-directory: ci-scripts/hot-cluster/ts
         env:
           GH_TOKEN: ${{ steps.arc-app-token.outputs.token }}
-        run: npx tsx src/scripts/cleanup-ghost-runners.ts
+        run: npx tsx src/scripts/cleanup-ghost-runners-bulk.ts
 
       - name: Teardown summary
         if: always()

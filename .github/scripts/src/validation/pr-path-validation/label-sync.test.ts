@@ -8,41 +8,41 @@ import { syncValidationLabels } from './label-sync';
 import type { PathValidationConfig } from './types';
 
 const TEST_CONFIG: PathValidationConfig = {
+  commandName: '/test-approved',
+  displayName: 'Test validation',
   exactPaths: [],
-  pathPrefixes: ['protected/'],
-  labels: { alert: 'alert', block: 'block', reviewed: 'reviewed', skip: 'skip' },
   labelMeta: {
     alert: { color: 'f59e0b', description: 'alert' },
     block: { color: 'b60205', description: 'block' },
   },
+  labels: { alert: 'alert', block: 'block', reviewed: 'reviewed', skip: 'skip' },
+  pathPrefixes: ['protected/'],
   statusContext: 'test-validation',
-  displayName: 'Test validation',
-  commandName: '/test-approved',
 };
 
-type Call = { method: string; args: unknown };
+type Call = { args: unknown; method: string };
 
-const fakeOctokit = (calls: Call[], id: string): Octokit =>
+const fakeOctokit = (calls: Call[], tag: string): Octokit =>
   ({
-    repos: {
-      createCommitStatus: async (args: unknown) => {
-        calls.push({ method: `createCommitStatus:${id}`, args });
+    issues: {
+      addLabels: async (args: unknown) => {
+        calls.push({ args, method: `addLabels:${tag}` });
+      },
+      getLabel: async () => ({ data: {} }),
+      removeLabel: async (args: unknown) => {
+        calls.push({ args, method: `removeLabel:${tag}` });
       },
     },
-    issues: {
-      getLabel: async () => ({ data: {} }),
-      addLabels: async (args: unknown) => {
-        calls.push({ method: `addLabels:${id}`, args });
-      },
-      removeLabel: async (args: unknown) => {
-        calls.push({ method: `removeLabel:${id}`, args });
+    repos: {
+      createCommitStatus: async (args: unknown) => {
+        calls.push({ args, method: `createCommitStatus:${tag}` });
       },
     },
   }) as unknown as Octokit;
 
 const baseCtx = (octokit: Octokit): LabelSyncContext => ({
+  config: { owner: 'kubevirt-ui', repo: 'kubevirt-plugin', token: 'x' },
   octokit,
-  config: { token: 'x', owner: 'kubevirt-ui', repo: 'kubevirt-plugin' },
   prNumber: 1,
 });
 
@@ -52,11 +52,16 @@ describe('syncValidationLabels', () => {
     const octokit = fakeOctokit(calls, 'main');
     await syncValidationLabels(baseCtx(octokit), TEST_CONFIG, true, false);
     const removed = calls
-      .filter((c) => c.method === 'removeLabel:main')
-      .map((c) => (c.args as { name: string }).name);
-    assert.deepEqual(removed.sort(), [TEST_CONFIG.labels.alert, TEST_CONFIG.labels.block].sort());
+      .filter((call) => call.method === 'removeLabel:main')
+      .map((call) => (call.args as { name: string }).name);
+    assert.deepEqual(
+      [...removed].sort((left: string, right: string) => left.localeCompare(right)),
+      [TEST_CONFIG.labels.alert, TEST_CONFIG.labels.block].sort((left: string, right: string) =>
+        left.localeCompare(right),
+      ),
+    );
     assert.equal(
-      calls.some((c) => c.method === 'addLabels:main'),
+      calls.some((call) => call.method === 'addLabels:main'),
       false,
     );
   });
@@ -65,10 +70,10 @@ describe('syncValidationLabels', () => {
     const calls: Call[] = [];
     const octokit = fakeOctokit(calls, 'main');
     await syncValidationLabels(baseCtx(octokit), TEST_CONFIG, true, true);
-    const added = calls.find((c) => c.method === 'addLabels:main');
+    const added = calls.find((call) => call.method === 'addLabels:main');
     assert.deepEqual((added?.args as { labels: string[] }).labels, [TEST_CONFIG.labels.alert]);
     assert.equal(
-      (calls.find((c) => c.method === 'removeLabel:main')?.args as { name: string }).name,
+      (calls.find((call) => call.method === 'removeLabel:main')?.args as { name: string }).name,
       TEST_CONFIG.labels.block,
     );
   });
@@ -78,14 +83,16 @@ describe('syncValidationLabels', () => {
     const octokit = fakeOctokit(calls, 'main');
     await syncValidationLabels(baseCtx(octokit), TEST_CONFIG, false, true);
     const addedLabels = calls
-      .filter((c) => c.method === 'addLabels:main')
-      .flatMap((c) => (c.args as { labels: string[] }).labels);
+      .filter((call) => call.method === 'addLabels:main')
+      .flatMap((call) => (call.args as { labels: string[] }).labels);
     assert.deepEqual(
-      addedLabels.sort(),
-      [TEST_CONFIG.labels.alert, TEST_CONFIG.labels.block].sort(),
+      [...addedLabels].sort((left: string, right: string) => left.localeCompare(right)),
+      [TEST_CONFIG.labels.alert, TEST_CONFIG.labels.block].sort((left: string, right: string) =>
+        left.localeCompare(right),
+      ),
     );
     assert.equal(
-      calls.some((c) => c.method === 'removeLabel:main'),
+      calls.some((call) => call.method === 'removeLabel:main'),
       false,
     );
   });

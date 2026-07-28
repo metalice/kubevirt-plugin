@@ -9,9 +9,10 @@
 import { Octokit } from '@octokit/rest';
 
 import { requireEnv } from '../utils';
+
 import { getRepoContext } from '../shared/actions-context';
-import { setOutput, failStep } from '../shared/output';
 import { E2E_HOLD_LABEL } from '../shared/merge-pool';
+import { failStep, setOutput } from '../shared/output';
 
 const STALE_MARKER_TITLE = 'Hot Cluster E2E: stale -- main has advanced since this ran';
 const STALE_MARKER_TITLE_LEGACY = 'Stale -- main has advanced since this ran';
@@ -20,14 +21,14 @@ const main = async (): Promise<void> => {
   const token = requireEnv('GITHUB_TOKEN');
   const { owner, repo } = getRepoContext();
   const prNumber = Number(requireEnv('PR_NUMBER'));
-  const poolPrNumbers: number[] = JSON.parse(process.env.POOL_PR_NUMBERS ?? '[]');
+  const poolPrNumbers = JSON.parse(process.env.POOL_PR_NUMBERS ?? '[]') as number[];
   const mainSha = requireEnv('GITHUB_SHA');
   const octokit = new Octokit({ auth: token });
 
-  const { data: pr } = await octokit.pulls.get({ owner, repo, pull_number: prNumber });
-  setOutput('head_sha', pr.head.sha);
+  const { data: pullRequest } = await octokit.pulls.get({ owner, pull_number: prNumber, repo });
+  setOutput('head_sha', pullRequest.head.sha);
 
-  const isHeld = (pr.labels || []).some((l) => l.name === E2E_HOLD_LABEL);
+  const isHeld = (pullRequest.labels ?? []).some((label) => label.name === E2E_HOLD_LABEL);
   if (isHeld) {
     console.log(`PR #${prNumber} is held via /hold-e2e -- leaving its check-run alone.`);
     setOutput('should_mark', 'false');
@@ -44,13 +45,13 @@ const main = async (): Promise<void> => {
   setOutput('summary', summary);
 
   const { data: existing } = await octokit.checks.listForRef({
-    owner,
-    repo,
-    ref: pr.head.sha,
     check_name: 'Run Gating Tests',
+    owner,
+    ref: pullRequest.head.sha,
+    repo,
   });
 
-  const [latest] = existing.check_runs.sort(
+  const [latest] = [...existing.check_runs].sort(
     (a, b) => new Date(b.started_at ?? '').getTime() - new Date(a.started_at ?? '').getTime(),
   );
 
@@ -80,6 +81,6 @@ const main = async (): Promise<void> => {
   setOutput('should_mark', 'true');
 };
 
-main().catch((err) => {
+void main().catch((err) => {
   failStep(err instanceof Error ? err.message : String(err));
 });

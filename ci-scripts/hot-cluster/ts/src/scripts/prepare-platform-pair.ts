@@ -13,11 +13,14 @@ const main = async (): Promise<void> => {
   const platform = requireEnv('PLATFORM');
   const pair = platform.replace(/\//g, '-');
 
-  appendFileSync(process.env.GITHUB_ENV!, `PLATFORM_PAIR=${pair}\n`);
+  const envFile = process.env.GITHUB_ENV;
+  if (envFile) {
+    appendFileSync(envFile, `PLATFORM_PAIR=${pair}\n`);
+  }
   console.log(`PLATFORM_PAIR=${pair}`);
 };
 
-main().catch((err) => {
+void main().catch((err) => {
   console.error(`::error::${err instanceof Error ? err.message : err}`);
   process.exit(1);
 });

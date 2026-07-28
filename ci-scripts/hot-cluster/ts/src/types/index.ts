@@ -1,4 +1,4 @@
-export * from './openshift';
-export * from './olm';
-export * from './hyperconverged';
-export * from './arc';
+export type * from './arc';
+export type * from './hyperconverged';
+export type * from './olm';
+export type * from './openshift';

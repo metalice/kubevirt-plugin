@@ -9,20 +9,20 @@ const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\
 const extractApproversBlock = (ownersYaml: string): string => {
   const lines = ownersYaml.split('\n');
   const startIndex = lines.findIndex((line) => /^approvers:\s*$/.test(line));
-  if (startIndex === -1) return '';
+  if (startIndex === -1) {
+    return '';
+  }
 
   const blockLines: string[] = [];
-  for (let i = startIndex + 1; i < lines.length; i++) {
-    // Strip a trailing YAML comment first, so a comment-only line reads as
-    // blank (skipped, not a block-ending key) and "- alice  # lead" still
-    // matches on "alice" alone.
-    const withoutComment = lines[i].replace(/\s*#.*$/, '');
+  for (const line of lines.slice(startIndex + 1)) {
+    const withoutComment = line.replace(/#.*$/, '').trimEnd();
     const trimmed = withoutComment.trim();
-    if (trimmed === '') continue;
-    // List items ("- name") stay part of the block whether indented or not
-    // (both are valid YAML) -- the next top-level key (e.g. reviewers:,
-    // options:) is what ends it.
-    if (!trimmed.startsWith('-')) break;
+    if (trimmed === '') {
+      continue;
+    }
+    if (!trimmed.startsWith('-')) {
+      break;
+    }
     blockLines.push(withoutComment);
   }
   return blockLines.join('\n');
@@ -89,9 +89,13 @@ export const isLabelAppliedByTrustedActor = async (
     );
     const actor = labelEvents.filter((event) => event.label.name === labelName).at(-1)
       ?.actor?.login;
-    if (!actor) return false;
+    if (!actor) {
+      return false;
+    }
 
-    if (actor === APPROVAL_BOT_LOGIN) return true;
+    if (actor === APPROVAL_BOT_LOGIN) {
+      return true;
+    }
     return await isListedInOwners(octokit, owner, repo, baseRef, actor);
   } catch {
     return false;

@@ -11,6 +11,7 @@
 import { Octokit } from '@octokit/rest';
 
 import { requireEnv } from '../utils';
+
 import { getRepoContext, getRunUrl } from '../shared/actions-context';
 import { failStep } from '../shared/output';
 
@@ -27,9 +28,6 @@ const main = async (): Promise<void> => {
     : 'This Hot Cluster E2E run';
 
   await octokit.issues.createComment({
-    owner,
-    repo,
-    issue_number: prNumber,
     body: [
       `⚠️ ${trigger} could not resolve this PR's context ` +
         '(head SHA / labels / mergeability) and did not run.',
@@ -38,9 +36,12 @@ const main = async (): Promise<void> => {
       '',
       `See the failed run for details: ${runUrl}`,
     ].join('\n'),
+    issue_number: prNumber,
+    owner,
+    repo,
   });
 };
 
-main().catch((err) => {
+void main().catch((err) => {
   failStep(err instanceof Error ? err.message : String(err));
 });

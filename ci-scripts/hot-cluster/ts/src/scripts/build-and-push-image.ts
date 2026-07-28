@@ -12,7 +12,7 @@ import { appendFileSync } from 'node:fs';
 
 import { requireEnv } from '../kube-client';
 
-const main = (): void => {
+const main = async (): Promise<void> => {
   const image = requireEnv('KUBEVIRT_PLUGIN_IMAGE');
   const labelsRaw = process.env.LABELS ?? '';
 
@@ -41,4 +41,7 @@ const main = (): void => {
   execSync(`podman push ${image}`, { stdio: 'inherit' });
 };
 
-main();
+void main().catch((err) => {
+  console.error(`::error::${err instanceof Error ? err.message : err}`);
+  process.exit(1);
+});

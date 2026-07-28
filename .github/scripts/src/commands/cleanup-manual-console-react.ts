@@ -11,6 +11,7 @@
 import { Octokit } from '@octokit/rest';
 
 import { requireEnv } from '../utils';
+
 import { getRepoContext } from '../shared/actions-context';
 import { reactToComment } from '../shared/command-helpers';
 import { failStep } from '../shared/output';
@@ -30,17 +31,17 @@ const main = async (): Promise<void> => {
   const runUrl = `${serverUrl}/${repository}/actions/workflows/deploy-manual-console.yml`;
 
   await octokit.issues.createComment({
-    owner,
-    repo,
-    issue_number: issueNumber,
     body: [
       `🧹 Dispatched a manual console teardown for this PR (cluster \`${clusterName}\`).`,
       '',
       `If no manual console exists for this PR, the teardown run is a harmless no-op -- check the [Actions tab](${runUrl}) for progress.`,
     ].join('\n'),
+    issue_number: issueNumber,
+    owner,
+    repo,
   });
 };
 
-main().catch((err) => {
+void main().catch((err) => {
   failStep(err instanceof Error ? err.message : String(err));
 });

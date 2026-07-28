@@ -5,7 +5,7 @@
  * Required env: SHOULD_RUN, PROBE_READY, PROVISION_RESULT
  */
 
-import { appendFileSync } from 'node:fs';
+import { setOutput } from '../utils';
 
 const main = async (): Promise<void> => {
   const shouldRun = process.env.SHOULD_RUN === 'true';
@@ -17,10 +17,10 @@ const main = async (): Promise<void> => {
   console.log(
     `should_run=${shouldRun}, probe_ready=${probeReady}, provision_result=${provisionResult} → cluster_ready=${ready}`,
   );
-  appendFileSync(process.env.GITHUB_OUTPUT!, `cluster_ready=${ready}\n`);
+  setOutput('cluster_ready', String(ready));
 };
 
-main().catch((err) => {
+void main().catch((err) => {
   console.error(`::error::${err instanceof Error ? err.message : err}`);
   process.exit(1);
 });

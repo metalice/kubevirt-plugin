@@ -10,28 +10,23 @@
 import { Octokit } from '@octokit/rest';
 
 import { requireEnv } from '../utils';
+
 import { getRepoContext } from '../shared/actions-context';
-import { setOutput, failStep } from '../shared/output';
+import { fetchPr } from '../shared/fetch-pr';
+import { failStep, setOutput } from '../shared/output';
 
 const main = async (): Promise<void> => {
-  const token = requireEnv('GITHUB_TOKEN');
+  const octokit = new Octokit({ auth: requireEnv('GITHUB_TOKEN') });
   const { owner, repo } = getRepoContext();
-  const issueNumber = Number(requireEnv('ISSUE_NUMBER'));
-  const octokit = new Octokit({ auth: token });
+  const pullRequest = await fetchPr(octokit, owner, repo, Number(requireEnv('ISSUE_NUMBER')));
 
-  const { data: pr } = await octokit.pulls.get({
-    owner,
-    repo,
-    pull_number: issueNumber,
-  });
-
-  setOutput('number', String(pr.number));
-  setOutput('title', pr.title);
-  setOutput('base_ref', pr.base.ref);
-  setOutput('head_sha', pr.head.sha);
-  setOutput('author', pr.user?.login ?? '');
+  setOutput('number', String(pullRequest.number));
+  setOutput('title', pullRequest.title);
+  setOutput('base_ref', pullRequest.baseRef);
+  setOutput('head_sha', pullRequest.headSha);
+  setOutput('author', pullRequest.author);
 };
 
-main().catch((err) => {
+void main().catch((err) => {
   failStep(err instanceof Error ? err.message : String(err));
 });

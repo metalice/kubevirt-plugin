@@ -1,46 +1,46 @@
 /** ConfigMap data field schema for CI environment triggers. */
 export type CiEnvData = {
-  'desired-state': 'present' | 'absent' | 'unknown';
-  status?: 'provisioning' | 'ready' | 'error' | 'cleaning' | 'cleaned' | '';
-  'plugin-image'?: string;
-  'test-namespace'?: string;
-  'console-image'?: string;
-  'helm-release'?: string;
   'auth-mode'?: 'disabled' | 'openshift';
-  'htpasswd-user'?: string;
-  'htpasswd-secret-name'?: string;
-  'user-settings-location'?: 'configmap' | 'localstorage' | '';
   'bridge-base-address'?: string;
+  'console-image'?: string;
   'console-route'?: string;
+  'desired-state': 'absent' | 'present' | 'unknown';
   'error-message'?: string;
+  'helm-release'?: string;
+  'htpasswd-secret-name'?: string;
+  'htpasswd-user'?: string;
+  'plugin-image'?: string;
+  status?: '' | 'cleaned' | 'cleaning' | 'error' | 'provisioning' | 'ready';
+  'test-namespace'?: string;
+  'user-settings-location'?: '' | 'configmap' | 'localstorage';
 };
 
 export type ControllerConfig = {
-  ciEnvNs: string;
-  ttlSeconds: number;
   ciEnvLabel: string;
-  manualLabel: string;
-  helmChartPath: string;
+  ciEnvNs: string;
+  consoleImageRegistry: string;
   ensureUserScript: string;
+  helmChartPath: string;
+  manualLabel: string;
+  pollIntervalMs: number;
+  reapIntervalSeconds: number;
   runnerSaName: string;
   runnerSaNs: string;
-  consoleImageRegistry: string;
-  reapIntervalSeconds: number;
-  pollIntervalMs: number;
+  ttlSeconds: number;
 };
 
 export const defaultConfig: ControllerConfig = {
-  ciEnvNs: process.env.CI_ENV_NS ?? 'ci-env',
-  ttlSeconds: Number(process.env.CI_ENV_TTL_SECONDS ?? '7200'),
   ciEnvLabel: process.env.CI_ENV_LABEL ?? 'ci.kubevirt-plugin/type=test-environment',
-  manualLabel: process.env.CI_ENV_MANUAL_LABEL ?? 'ci.kubevirt-plugin/type=manual-console',
-  helmChartPath: process.env.HELM_CHART_PATH ?? '/opt/ci-env/helm/ci-test-stack',
+  ciEnvNs: process.env.CI_ENV_NS ?? 'ci-env',
+  consoleImageRegistry: process.env.CONSOLE_IMAGE_REGISTRY ?? 'quay.io/openshift/origin-console',
   ensureUserScript:
     process.env.ENSURE_MANUAL_CONSOLE_USER_SCRIPT ??
     '/opt/ci-env/manual-console/ensure-manual-console-user.sh',
+  helmChartPath: process.env.HELM_CHART_PATH ?? '/opt/ci-env/helm/ci-test-stack',
+  manualLabel: process.env.CI_ENV_MANUAL_LABEL ?? 'ci.kubevirt-plugin/type=manual-console',
+  pollIntervalMs: 10_000,
+  reapIntervalSeconds: 300,
   runnerSaName: process.env.RUNNER_SA_NAME ?? 'kubevirt-plugin-ci-gha-rs-no-permission',
   runnerSaNs: process.env.RUNNER_SA_NS ?? 'arc-runners',
-  consoleImageRegistry: process.env.CONSOLE_IMAGE_REGISTRY ?? 'quay.io/openshift/origin-console',
-  reapIntervalSeconds: 300,
-  pollIntervalMs: 10_000,
+  ttlSeconds: Number(process.env.CI_ENV_TTL_SECONDS ?? '7200'),
 };

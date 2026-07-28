@@ -7,33 +7,36 @@
 
 import { execSync } from 'node:child_process';
 
-const requireEnv = (name: string): string => {
-  const val = process.env[name];
-  if (!val) throw new Error(`Missing required environment variable: ${name}`);
-  return val;
+import { requireEnv } from '../utils';
+
+const main = async (): Promise<void> => {
+  const testEngine = requireEnv('TEST_ENGINE');
+  const testProject = requireEnv('TEST_PROJECT');
+
+  if (testEngine === 'cypress') {
+    const testNs = requireEnv('TEST_NS');
+    const osImagesNs = requireEnv('OS_IMAGES_NS');
+    const cnvNs = requireEnv('CNV_NS');
+    const testSecretName = requireEnv('TEST_SECRET_NAME');
+
+    const env = {
+      ...process.env,
+      CYPRESS_CNV_NS: cnvNs,
+      CYPRESS_OS_IMAGES_NS: osImagesNs,
+      CYPRESS_TEST_NS: testNs,
+      CYPRESS_TEST_SECRET_NAME: testSecretName,
+    };
+
+    execSync(`oc project "${testNs}"`, { env, stdio: 'inherit' });
+
+    const spec = testProject === 'features' ? 'tests/tier1.cy.ts' : 'tests/gating.cy.ts';
+    execSync(`npm run test-cypress-headless -- --spec ${spec}`, { env, stdio: 'inherit' });
+  } else {
+    execSync('./playwright-runner-hc-e2e.sh Gating', { stdio: 'inherit' });
+  }
 };
 
-const testEngine = requireEnv('TEST_ENGINE');
-const testProject = requireEnv('TEST_PROJECT');
-
-if (testEngine === 'cypress') {
-  const testNs = requireEnv('TEST_NS');
-  const osImagesNs = requireEnv('OS_IMAGES_NS');
-  const cnvNs = requireEnv('CNV_NS');
-  const testSecretName = requireEnv('TEST_SECRET_NAME');
-
-  const env = {
-    ...process.env,
-    CYPRESS_TEST_NS: testNs,
-    CYPRESS_OS_IMAGES_NS: osImagesNs,
-    CYPRESS_CNV_NS: cnvNs,
-    CYPRESS_TEST_SECRET_NAME: testSecretName,
-  };
-
-  execSync(`oc project "${testNs}"`, { stdio: 'inherit', env });
-
-  const spec = testProject === 'features' ? 'tests/tier1.cy.ts' : 'tests/gating.cy.ts';
-  execSync(`npm run test-cypress-headless -- --spec ${spec}`, { stdio: 'inherit', env });
-} else {
-  execSync('./playwright-runner-hc-e2e.sh Gating', { stdio: 'inherit' });
-}
+void main().catch((err) => {
+  console.error(`::error::${err instanceof Error ? err.message : err}`);
+  process.exit(1);
+});

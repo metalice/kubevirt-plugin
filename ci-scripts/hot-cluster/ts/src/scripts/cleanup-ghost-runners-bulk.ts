@@ -13,9 +13,9 @@ import { requireEnv } from '../kube-client';
 
 type Runner = {
   id: number;
+  labels: Array<{ name: string }>;
   name: string;
   status: string;
-  labels: Array<{ name: string }>;
 };
 
 type RunnersResponse = {
@@ -29,28 +29,33 @@ const main = async (): Promise<void> => {
 
   console.log('=== Offline Self-Hosted Runners ===');
 
-  let clusterNames: string[];
-  try {
-    const parsed: unknown = JSON.parse(matchedRaw);
-    clusterNames =
-      Array.isArray(parsed) && parsed.length > 0 ? (parsed as string[]) : [clusterName];
-  } catch {
-    clusterNames = [clusterName];
-  }
+  const clusterNames: string[] = ((): string[] => {
+    try {
+      const parsed: unknown = JSON.parse(matchedRaw);
+      return Array.isArray(parsed) && parsed.length > 0 ? (parsed as string[]) : [clusterName];
+    } catch {
+      return [clusterName];
+    }
+  })();
 
-  let allRunners: Runner[];
-  try {
-    const output = execSync(`gh api "/repos/${repo}/actions/runners"`, { encoding: 'utf8' });
-    allRunners = (JSON.parse(output) as RunnersResponse).runners;
-  } catch {
-    console.log('Failed to list runners, skipping cleanup');
+  const allRunners: Runner[] = ((): Runner[] => {
+    try {
+      const output = execSync(`gh api "/repos/${repo}/actions/runners"`, { encoding: 'utf8' });
+      return (JSON.parse(output) as RunnersResponse).runners;
+    } catch {
+      console.log('Failed to list runners, skipping cleanup');
+      return [];
+    }
+  })();
+
+  if (allRunners.length === 0) {
     return;
   }
 
   for (const name of clusterNames) {
     console.log(`Checking for offline self-hosted runners with label '${name}'...`);
     const offline = allRunners.filter(
-      (r) => r.status === 'offline' && r.labels.some((l) => l.name === name),
+      (runner) => runner.status === 'offline' && runner.labels.some((label) => label.name === name),
     );
 
     if (offline.length === 0) {
@@ -71,7 +76,7 @@ const main = async (): Promise<void> => {
   }
 };
 
-main().catch((err) => {
+void main().catch((err) => {
   console.error(`::error::${err instanceof Error ? err.message : err}`);
   process.exit(1);
 });

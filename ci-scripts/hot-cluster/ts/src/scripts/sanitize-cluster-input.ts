@@ -5,9 +5,8 @@
  * Required env: INPUT_CLUSTER_NAME
  */
 
-import { appendFileSync } from 'node:fs';
-
 import { requireEnv } from '../kube-client';
+import { setOutput } from '../utils';
 
 const CLUSTER_NAME_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,20}$/;
 
@@ -20,10 +19,10 @@ const main = async (): Promise<void> => {
     );
   }
 
-  appendFileSync(process.env.GITHUB_OUTPUT!, `matrix=${JSON.stringify([clusterName])}\n`);
+  setOutput('matrix', JSON.stringify([clusterName]));
 };
 
-main().catch((err) => {
+void main().catch((err) => {
   console.error(`::error::${err instanceof Error ? err.message : err}`);
   process.exit(1);
 });

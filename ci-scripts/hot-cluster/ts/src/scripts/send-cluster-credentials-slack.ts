@@ -6,8 +6,8 @@
  * Optional env: SLACK_WEBHOOK_URL, ADMIN_PASSWORD, INSTALL_DIR
  */
 
-import { readFileSync } from 'node:fs';
 import { execSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 
 import { requireEnv } from '../kube-client';
 
@@ -17,38 +17,40 @@ const main = async (): Promise<void> => {
   const adminPassword = process.env.ADMIN_PASSWORD ?? '';
   const installDir = process.env.INSTALL_DIR ?? '';
 
-  let consoleUrl: string;
-  try {
-    consoleUrl = execSync(
-      "oc get consoles.config.openshift.io cluster -o jsonpath='{.status.consoleURL}'",
-      {
-        encoding: 'utf8',
-        stdio: ['pipe', 'pipe', 'pipe'],
-      },
-    )
-      .replace(/'/g, '')
-      .trim();
-  } catch {
-    consoleUrl = 'unknown';
-  }
-
-  let creds = '';
-  if (installDir) {
+  const consoleUrl = ((): string => {
     try {
-      const pw = readFileSync(`${installDir}/auth/kubeadmin-password`, 'utf8').trim();
-      if (pw) {
-        console.log(`::add-mask::${pw}`);
-        creds = `\n*kubeadmin:* \`${pw}\``;
-      }
+      return execSync(
+        "oc get consoles.config.openshift.io cluster -o jsonpath='{.status.consoleURL}'",
+        {
+          encoding: 'utf8',
+          stdio: ['pipe', 'pipe', 'pipe'],
+        },
+      )
+        .replace(/'/g, '')
+        .trim();
     } catch {
-      /* no kubeadmin password file */
+      return 'unknown';
     }
-  }
+  })();
 
-  if (!creds && adminPassword) {
-    console.log(`::add-mask::${adminPassword}`);
-    creds = `\n*admin:* \`${adminPassword}\``;
-  }
+  const creds = ((): string => {
+    if (installDir) {
+      try {
+        const password = readFileSync(`${installDir}/auth/kubeadmin-password`, 'utf8').trim();
+        if (password) {
+          console.log(`::add-mask::${password}`);
+          return `\n*kubeadmin:* \`${password}\``;
+        }
+      } catch {
+        /* no kubeadmin password file */
+      }
+    }
+    if (adminPassword) {
+      console.log(`::add-mask::${adminPassword}`);
+      return `\n*admin:* \`${adminPassword}\``;
+    }
+    return '';
+  })();
 
   if (!slackWebhookUrl) {
     console.log('::warning::SLACK_WEBHOOK_URL not set — skipping Slack notification');
@@ -63,9 +65,9 @@ const main = async (): Promise<void> => {
   const text = `:white_check_mark: *Hot cluster ready [${branchName}]*\n*Console:* <${consoleUrl}>${creds}`;
 
   const response = await fetch(slackWebhookUrl, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ text }),
+    headers: { 'Content-Type': 'application/json' },
+    method: 'POST',
   });
 
   if (!response.ok) {
@@ -75,7 +77,7 @@ const main = async (): Promise<void> => {
   console.log('Slack notification sent.');
 };
 
-main().catch((err) => {
+void main().catch((err) => {
   console.error(`::error::${err instanceof Error ? err.message : err}`);
   process.exit(1);
 });

@@ -9,28 +9,33 @@
 import { Octokit } from '@octokit/rest';
 
 import { requireEnv } from '../utils';
+
 import { getRepoContext } from '../shared/actions-context';
-import { E2E_PASSED_LABEL, E2E_FAILED_LABEL } from '../shared/merge-pool';
+import { E2E_FAILED_LABEL, E2E_PASSED_LABEL } from '../shared/merge-pool';
+import { failStep } from '../shared/output';
 
 const main = async (): Promise<void> => {
   const octokit = new Octokit({ auth: requireEnv('GITHUB_TOKEN') });
   const { owner, repo } = getRepoContext();
   const issueNumber = Number(requireEnv('PR_NUMBER'));
 
-  let firstError: unknown;
+  const errors: unknown[] = [];
   for (const name of [E2E_PASSED_LABEL, E2E_FAILED_LABEL]) {
     try {
-      await octokit.issues.removeLabel({ owner, repo, issue_number: issueNumber, name });
+      await octokit.issues.removeLabel({ issue_number: issueNumber, name, owner, repo });
       console.log(`Removed label "${name}" from PR #${issueNumber}`);
     } catch (err: unknown) {
       const status = (err as { status?: number }).status;
-      if (status !== 404) firstError ??= err;
+      if (status !== 404) {
+        errors.push(err);
+      }
     }
   }
-  if (firstError) throw firstError;
+  if (errors.length > 0) {
+    throw errors[0];
+  }
 };
 
-main().catch((err) => {
-  console.error(`::error::${err instanceof Error ? err.message : err}`);
-  process.exit(1);
+void main().catch((err) => {
+  failStep(err instanceof Error ? err.message : String(err));
 });

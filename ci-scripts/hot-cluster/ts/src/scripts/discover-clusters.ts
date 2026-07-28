@@ -6,9 +6,9 @@
  */
 
 import { execSync } from 'node:child_process';
-import { appendFileSync } from 'node:fs';
 
 import { requireEnv } from '../kube-client';
+import { setOutput } from '../utils';
 
 const execJson = <T>(cmd: string, fallback: T): T => {
   try {
@@ -20,7 +20,7 @@ const execJson = <T>(cmd: string, fallback: T): T => {
 
 const main = async (): Promise<void> => {
   const baseDomain = requireEnv('BASE_DOMAIN');
-  let clusters: string[] = [];
+  const ipiClusters: string[] = [];
 
   // --- IPI clusters via CIS DNS ---
   console.log('=== Discovering IPI clusters via CIS DNS ===');
@@ -44,20 +44,20 @@ const main = async (): Promise<void> => {
     const zoneId = zones[0]?.id;
 
     if (zoneId) {
-      const records = execJson<Array<{ type?: string; name?: string }>>(
+      const records = execJson<Array<{ name?: string; type?: string }>>(
         `ibmcloud cis dns-records "${zoneId}" --output json 2>/dev/null`,
         [],
       );
 
       const apiPattern = new RegExp(`^api\\.([^.]+)\\.${baseDomain.replace(/\./g, '\\.')}$`);
       const ipiNames = records
-        .filter((r) => r.type === 'A' || r.type === 'CNAME')
-        .map((r) => r.name?.match(apiPattern)?.[1])
+        .filter((record) => record.type === 'A' || record.type === 'CNAME')
+        .map((record) => record.name?.match(apiPattern)?.[1])
         .filter((name): name is string => !!name);
 
       const uniqueIpi = [...new Set(ipiNames)];
       console.log(`IPI clusters from DNS: ${JSON.stringify(uniqueIpi)}`);
-      clusters.push(...uniqueIpi);
+      ipiClusters.push(...uniqueIpi);
     } else {
       console.log('WARNING: Could not find CIS zone');
     }
@@ -71,12 +71,12 @@ const main = async (): Promise<void> => {
     'ibmcloud oc cluster ls --output json 2>/dev/null',
     [],
   );
-  const roksNames = roksClusters.map((c) => c.name).filter((n): n is string => !!n);
+  const roksNames = roksClusters
+    .map((cluster) => cluster.name)
+    .filter((name): name is string => !!name);
   console.log(`ROKS clusters: ${JSON.stringify(roksNames)}`);
-  clusters.push(...roksNames);
 
-  // Deduplicate
-  clusters = [...new Set(clusters)];
+  const clusters = [...new Set([...ipiClusters, ...roksNames])];
 
   if (clusters.length === 0) {
     console.log('No clusters discovered — nothing to check');
@@ -84,10 +84,10 @@ const main = async (): Promise<void> => {
     console.log(`Discovered clusters: ${JSON.stringify(clusters)}`);
   }
 
-  appendFileSync(process.env.GITHUB_OUTPUT!, `clusters=${JSON.stringify(clusters)}\n`);
+  setOutput('clusters', JSON.stringify(clusters));
 };
 
-main().catch((err) => {
+void main().catch((err) => {
   console.error(`::error::${err instanceof Error ? err.message : err}`);
   process.exit(1);
 });

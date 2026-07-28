@@ -5,13 +5,13 @@
  * Optional env: BUSINESS_HOURS_ONLY (default 'false')
  */
 
-import { appendFileSync } from 'node:fs';
+import { setOutput } from '../utils';
 
 const main = async (): Promise<void> => {
   const businessHoursOnly = process.env.BUSINESS_HOURS_ONLY === 'true';
 
   if (!businessHoursOnly) {
-    appendFileSync(process.env.GITHUB_OUTPUT!, 'skip=false\n');
+    setOutput('skip', 'false');
     console.log('Business hours check disabled — proceeding with idle check.');
     return;
   }
@@ -26,15 +26,15 @@ const main = async (): Promise<void> => {
   const isBusinessHour = hour >= 8 && hour < 18;
 
   if (isBusinessDay && isBusinessHour) {
-    appendFileSync(process.env.GITHUB_OUTPUT!, 'skip=true\n');
+    setOutput('skip', 'true');
     console.log('Business hours (Sun-Thu 8-18 Israel) — skipping teardown.');
   } else {
-    appendFileSync(process.env.GITHUB_OUTPUT!, 'skip=false\n');
+    setOutput('skip', 'false');
     console.log('Outside business hours — proceeding with idle check.');
   }
 };
 
-main().catch((err) => {
+void main().catch((err) => {
   console.error(`::error::${err instanceof Error ? err.message : err}`);
   process.exit(1);
 });

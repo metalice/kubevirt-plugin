@@ -3,9 +3,10 @@
  * Replaces ci-scripts/hot-cluster/js/sync-needs-rebase-label.cjs.
  */
 
-import { Octokit } from '@octokit/rest';
+import { type Octokit } from '@octokit/rest';
 
-import { addLabel, removeLabel, upsertComment } from '../github-comments';
+import { addLabel, removeLabel } from '../github-comments';
+
 import { NEEDS_REBASE_LABEL } from '../shared/merge-pool';
 
 const LABEL_META = {
@@ -22,12 +23,12 @@ const hasMarkerComment = async (
   prNumber: number,
 ): Promise<boolean> => {
   const comments = await octokit.paginate(octokit.issues.listComments, {
-    owner,
-    repo,
     issue_number: prNumber,
+    owner,
     per_page: 100,
+    repo,
   });
-  return comments.some((c) => (c.body ?? '').includes(COMMENT_MARKER));
+  return comments.some((comment) => (comment.body ?? '').includes(COMMENT_MARKER));
 };
 
 const deleteMarkerComments = async (
@@ -37,17 +38,21 @@ const deleteMarkerComments = async (
   prNumber: number,
 ): Promise<void> => {
   const comments = await octokit.paginate(octokit.issues.listComments, {
-    owner,
-    repo,
     issue_number: prNumber,
+    owner,
     per_page: 100,
+    repo,
   });
   for (const comment of comments) {
-    if (!(comment.body ?? '').includes(COMMENT_MARKER)) continue;
+    if (!(comment.body ?? '').includes(COMMENT_MARKER)) {
+      continue;
+    }
     try {
-      await octokit.issues.deleteComment({ owner, repo, comment_id: comment.id });
+      await octokit.issues.deleteComment({ comment_id: comment.id, owner, repo });
     } catch (err) {
-      if ((err as { status?: number }).status !== 404) throw err;
+      if ((err as { status?: number }).status !== 404) {
+        throw err;
+      }
     }
   }
 };
@@ -55,8 +60,8 @@ const deleteMarkerComments = async (
 type SyncParams = {
   octokit: Octokit;
   owner: string;
-  repo: string;
   prNumber: number;
+  repo: string;
 };
 
 /**
@@ -66,24 +71,26 @@ type SyncParams = {
 export const syncNeedsRebaseLabel = async ({
   octokit,
   owner,
-  repo,
   prNumber,
+  repo,
 }: SyncParams): Promise<'applied' | 'removed' | 'skipped' | 'unchanged'> => {
-  const { data: pr } = await octokit.pulls.get({ owner, repo, pull_number: prNumber });
+  const { data: pullRequest } = await octokit.pulls.get({ owner, pull_number: prNumber, repo });
 
-  if (pr.mergeable === null) {
+  if (pullRequest.mergeable === null) {
     console.log(
       `PR #${prNumber}: mergeable state not yet computed by GitHub -- skipping this pass.`,
     );
     return 'skipped';
   }
 
-  const currentlyHasLabel = (pr.labels || []).some((l) => l.name === NEEDS_REBASE_LABEL);
+  const currentlyHasLabel = (pullRequest.labels ?? []).some(
+    (label) => label.name === NEEDS_REBASE_LABEL,
+  );
 
-  if (pr.mergeable === false) {
+  if (pullRequest.mergeable === false) {
     if (!currentlyHasLabel) {
       console.log(
-        `PR #${prNumber}: has a merge conflict with '${pr.base.ref}' -- applying '${NEEDS_REBASE_LABEL}'.`,
+        `PR #${prNumber}: has a merge conflict with '${pullRequest.base.ref}' -- applying '${NEEDS_REBASE_LABEL}'.`,
       );
       await addLabel(octokit, owner, repo, prNumber, NEEDS_REBASE_LABEL, LABEL_META);
     }
@@ -91,11 +98,11 @@ export const syncNeedsRebaseLabel = async ({
     if (!(await hasMarkerComment(octokit, owner, repo, prNumber))) {
       const body = [
         COMMENT_MARKER,
-        `@${pr.user?.login}: this PR has a merge conflict with the \`${pr.base.ref}\` branch and needs a rebase (or merging \`${pr.base.ref}\` into your branch) before it can be tested or merged.`,
+        `@${pullRequest.user?.login}: this PR has a merge conflict with the \`${pullRequest.base.ref}\` branch and needs a rebase (or merging \`${pullRequest.base.ref}\` into your branch) before it can be tested or merged.`,
         `The \`${NEEDS_REBASE_LABEL}\` label will be removed automatically once resolved.`,
       ].join('\n\n');
 
-      await octokit.issues.createComment({ owner, repo, issue_number: prNumber, body });
+      await octokit.issues.createComment({ body, issue_number: prNumber, owner, repo });
     }
 
     return currentlyHasLabel ? 'unchanged' : 'applied';
@@ -112,4 +119,5 @@ export const syncNeedsRebaseLabel = async ({
   return currentlyHasLabel ? 'removed' : 'unchanged';
 };
 
-export { COMMENT_MARKER, NEEDS_REBASE_LABEL };
+export { COMMENT_MARKER };
+export { NEEDS_REBASE_LABEL } from '../shared/merge-pool';

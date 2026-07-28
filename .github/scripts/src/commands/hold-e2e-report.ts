@@ -8,11 +8,12 @@
 import { Octokit } from '@octokit/rest';
 
 import { requireEnv } from '../utils';
-import { getRepoContext, getRunUrl } from '../shared/actions-context';
+
+import { getRepoContext } from '../shared/actions-context';
 import { failStep } from '../shared/output';
 
 const main = async (): Promise<void> => {
-  const token = process.env.BOT_TOKEN || requireEnv('GITHUB_TOKEN');
+  const token = process.env.BOT_TOKEN ?? requireEnv('GITHUB_TOKEN');
   const { owner, repo } = getRepoContext();
   const prNumber = Number(requireEnv('PR_NUMBER'));
   const labelOk = process.env.LABEL_OK === 'true';
@@ -40,7 +41,7 @@ const main = async (): Promise<void> => {
         ].join('\n');
 
   try {
-    await octokit.issues.createComment({ owner, repo, issue_number: prNumber, body });
+    await octokit.issues.createComment({ body, issue_number: prNumber, owner, repo });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.warn(`Could not comment on the PR: ${msg}`);
@@ -50,6 +51,6 @@ const main = async (): Promise<void> => {
   }
 };
 
-main().catch((err) => {
+void main().catch((err) => {
   failStep(err instanceof Error ? err.message : String(err));
 });

@@ -7,17 +7,19 @@
  * Output: already_ready=true|false
  */
 
-import { appendFileSync } from 'node:fs';
 import { execSync } from 'node:child_process';
+import { appendFileSync } from 'node:fs';
 
 import { requireEnv } from '../kube-client';
 
 const setOutput = (value: string): void => {
   const outputFile = process.env.GITHUB_OUTPUT;
-  if (outputFile) appendFileSync(outputFile, `already_ready=${value}\n`);
+  if (outputFile) {
+    appendFileSync(outputFile, `already_ready=${value}\n`);
+  }
 };
 
-const main = (): void => {
+const main = async (): Promise<void> => {
   const clusterName = requireEnv('CLUSTER_NAME');
   const infraType = requireEnv('INFRASTRUCTURE_TYPE');
   const baseDomain = requireEnv('BASE_DOMAIN');
@@ -47,4 +49,7 @@ const main = (): void => {
   setOutput('false');
 };
 
-main();
+void main().catch((err) => {
+  console.error(`::error::${err instanceof Error ? err.message : err}`);
+  process.exit(1);
+});

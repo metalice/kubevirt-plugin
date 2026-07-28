@@ -9,6 +9,7 @@
 import { Octokit } from '@octokit/rest';
 
 import { requireEnv } from '../utils';
+
 import { getRepoContext } from '../shared/actions-context';
 import { reactToComment } from '../shared/command-helpers';
 import { failStep } from '../shared/output';
@@ -25,6 +26,6 @@ const main = async (): Promise<void> => {
   failStep(`${author} is not authorized to use ${command}`);
 };
 
-main().catch((err) => {
+void main().catch((err) => {
   failStep(err instanceof Error ? err.message : String(err));
 });

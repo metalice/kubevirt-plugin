@@ -9,8 +9,8 @@ export type PathValidationEvent = {
 };
 
 export type LabelSyncContext = {
-  octokit: Octokit;
   config: GitHubConfig;
+  octokit: Octokit;
   prNumber: number;
 };
 
@@ -20,7 +20,7 @@ export const syncValidationLabels = async (
   passed: boolean,
   hasSensitiveChanges: boolean,
 ): Promise<void> => {
-  const { octokit, config, prNumber } = ctx;
+  const { config, octokit, prNumber } = ctx;
 
   if (!hasSensitiveChanges) {
     await removeLabel(octokit, config.owner, config.repo, prNumber, pathConfig.labels.alert);

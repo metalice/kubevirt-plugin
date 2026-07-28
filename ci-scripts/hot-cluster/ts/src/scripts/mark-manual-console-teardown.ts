@@ -7,11 +7,11 @@
  */
 
 import { execSync } from 'node:child_process';
-import { appendFileSync } from 'node:fs';
 
 import { requireEnv } from '../kube-client';
+import { setOutput } from '../utils';
 
-const main = (): void => {
+const main = async (): Promise<void> => {
   const cmName = requireEnv('CM_NAME');
   const namespace = requireEnv('CI_ENV_NS');
   const clusterName = process.env.CLUSTER_NAME ?? '';
@@ -25,7 +25,7 @@ const main = (): void => {
     console.log(
       `::warning::No manual console ConfigMap ${namespace}/${cmName} found on ${clusterName} -- nothing to tear down.`,
     );
-    appendFileSync(process.env.GITHUB_OUTPUT!, 'found=false\n');
+    setOutput('found', 'false');
     return;
   }
 
@@ -35,11 +35,14 @@ const main = (): void => {
     { stdio: 'inherit' },
   );
 
-  appendFileSync(process.env.GITHUB_OUTPUT!, 'found=true\n');
+  setOutput('found', 'true');
   console.log(
     `Marked ${namespace}/${cmName} for teardown (desired-state=absent); ` +
       'ci-env-controller will remove its Helm release, namespace resources, and OAuth user shortly.',
   );
 };
 
-main();
+void main().catch((err) => {
+  console.error(`::error::${err instanceof Error ? err.message : err}`);
+  process.exit(1);
+});

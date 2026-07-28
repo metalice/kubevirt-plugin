@@ -8,12 +8,11 @@
 import { execSync } from 'node:child_process';
 import { appendFileSync } from 'node:fs';
 
-import { KubeClient } from '../kube-client';
-import type { KubeVirt, CDI, SSP } from '../types/hyperconverged';
+import { logHcoOperandVersions } from './log-env-summary-hco';
 
-const md: string[] = [];
+const markdownLines: string[] = [];
 const emit = (line: string): void => {
-  md.push(line);
+  markdownLines.push(line);
   console.log(line);
 };
 
@@ -32,12 +31,12 @@ const getVersion = (cmd: string): { client: string; server: string } => {
     const client =
       output
         .split('\n')
-        .find((l) => /client/i.test(l))
+        .find((line) => /client/i.test(line))
         ?.trim() ?? 'N/A';
     const server =
       output
         .split('\n')
-        .find((l) => /server/i.test(l))
+        .find((line) => /server/i.test(line))
         ?.trim() ?? 'N/A';
     return { client, server };
   } catch {
@@ -67,7 +66,9 @@ const main = async (): Promise<void> => {
     'KUBEVIRT_PLUGIN_IMAGE',
     'KUBEVIRT_UI_PLUGIN_RUNNER',
   ];
-  for (const v of vars) emit(`| \`${v}\` | \`${process.env[v] ?? '<unset>'}\` |`);
+  for (const varName of vars) {
+    emit(`| \`${varName}\` | \`${process.env[varName] ?? '<unset>'}\` |`);
+  }
   emit('</details>\n');
 
   // --- Tool availability ---
@@ -75,11 +76,10 @@ const main = async (): Promise<void> => {
   emit('| Tool | Available |');
   emit('| --- | --- |');
   const tools = ['jq', 'yq', 'envsubst', 'curl', 'kubectl', 'oc', 'virtctl', 'helm', 'npm', 'node'];
-  let missing = false;
-  for (const t of tools) {
-    const ok = commandExists(t);
-    emit(`| \`${t}\` | ${ok ? '✅' : '❌'} |`);
-    if (!ok) missing = true;
+  const toolResults = tools.map((t) => ({ ok: commandExists(t), tool: t }));
+  const missing = toolResults.some((result) => !result.ok);
+  for (const { ok, tool } of toolResults) {
+    emit(`| \`${tool}\` | ${ok ? '✅' : '❌'} |`);
   }
   emit('</details>\n');
   if (missing) {
@@ -102,17 +102,16 @@ const main = async (): Promise<void> => {
   emit('<details><summary>Client / Server Versions</summary>\n');
   emit('| Tool | Client Version | Server Version |');
   emit('| --- | --- | --- |');
-  let versionFailed = false;
-  for (const cmd of ['oc', 'virtctl']) {
+  const versionResults = ['oc', 'virtctl'].map((cmd) => {
     if (!commandExists(cmd)) {
       emit(`| \`${cmd}\` | ❌ not found | — |`);
-      versionFailed = true;
-    } else {
-      const v = getVersion(cmd);
-      emit(`| \`${cmd}\` | ${v.client} | ${v.server} |`);
-      if (v.client === 'failed') versionFailed = true;
+      return false;
     }
-  }
+    const versionInfo = getVersion(cmd);
+    emit(`| \`${cmd}\` | ${versionInfo.client} | ${versionInfo.server} |`);
+    return versionInfo.client !== 'failed';
+  });
+  const versionFailed = versionResults.some((succeeded) => !succeeded);
   emit('</details>\n');
   if (versionFailed) {
     console.error('::error::Client/server version checks failed');
@@ -120,89 +119,16 @@ const main = async (): Promise<void> => {
   }
 
   // --- HCO operand versions (via K8s API) ---
-  emit('<details><summary>HCO & Managed Operator Versions</summary>\n');
-  try {
-    const client = KubeClient.fromKubeconfig();
-    const api = client.customObjects;
-    const HCO_LABEL = 'app.kubernetes.io/managed-by=hco-operator';
-
-    // CSVs
-    emit('### HCO Version (OLM CSV)\n');
-    emit('| Name | Version | Phase |');
-    emit('| --- | --- | --- |');
-    try {
-      const csvs = (await api.listNamespacedCustomObject({
-        group: 'operators.coreos.com',
-        version: 'v1alpha1',
-        namespace: 'openshift-cnv',
-        plural: 'clusterserviceversions',
-      })) as unknown as {
-        items: Array<{
-          metadata: { name: string };
-          spec?: { version?: string };
-          status?: { phase?: string };
-        }>;
-      };
-      const hcoCsvs = csvs.items.filter((c) => /hyperconverged/i.test(c.metadata.name));
-      for (const c of hcoCsvs)
-        emit(
-          `| \`${c.metadata.name}\` | \`${c.spec?.version ?? ''}\` | ${c.status?.phase ?? ''} |`,
-        );
-      if (hcoCsvs.length === 0) emit('| — | HCO CSV not found | — |');
-    } catch {
-      emit('| — | HCO CSV not found | — |');
-    }
-
-    emit('\n### HCO Managed Operand Versions\n');
-    emit('| Operand | Version |');
-    emit('| --- | --- |');
-
-    const getOperandVersion = async (
-      group: string,
-      version: string,
-      plural: string,
-      field: string,
-    ): Promise<string> => {
-      try {
-        const result = (await api.listClusterCustomObject({
-          group,
-          version,
-          plural,
-          labelSelector: HCO_LABEL,
-        })) as unknown as { items: Array<Record<string, unknown>> };
-        const status = (result.items[0] as { status?: Record<string, unknown> })?.status;
-        return (status?.[field] as string) ?? 'not found';
-      } catch {
-        return 'not found';
-      }
-    };
-
-    emit(
-      `| \`kubevirt\` | \`${await getOperandVersion('kubevirt.io', 'v1', 'kubevirts', 'observedKubeVirtVersion')}\` |`,
-    );
-    emit(
-      `| \`cdi\` | \`${await getOperandVersion('cdi.kubevirt.io', 'v1beta1', 'cdis', 'observedVersion')}\` |`,
-    );
-    emit(
-      `| \`ssp\` | \`${await getOperandVersion('ssp.kubevirt.io', 'v1beta2', 'ssps', 'observedVersion')}\` |`,
-    );
-    emit(
-      `| \`cnao\` | \`${await getOperandVersion('networkaddonsoperator.network.kubevirt.io', 'v1', 'networkaddonsconfigs', 'observedVersion')}\` |`,
-    );
-    emit(
-      `| \`hostpath-provisioner\` | \`${await getOperandVersion('hostpathprovisioner.kubevirt.io', 'v1beta1', 'hostpathprovisioners', 'observedVersion')}\` |`,
-    );
-  } catch {
-    emit('> ⚠️ Could not query cluster for operand versions.');
-  }
-  emit('</details>\n');
+  await logHcoOperandVersions(emit);
 
   // Write to step summary
   const summaryFile = process.env.GITHUB_STEP_SUMMARY;
-  if (summaryFile) appendFileSync(summaryFile, md.join('\n'));
+  if (summaryFile) {
+    appendFileSync(summaryFile, markdownLines.join('\n'));
+  }
 };
 
-main().catch((err) => {
+void main().catch((err) => {
   console.error(`::error::${err instanceof Error ? err.message : err}`);
   process.exit(1);
 });

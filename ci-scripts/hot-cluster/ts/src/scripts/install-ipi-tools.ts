@@ -7,26 +7,31 @@
  * Output: ocp_channel, ocp_version
  */
 
-import { appendFileSync } from 'node:fs';
 import { execSync } from 'node:child_process';
+import { appendFileSync } from 'node:fs';
 
 import { requireEnv } from '../kube-client';
 
-const main = (): void => {
+const main = async (): Promise<void> => {
   const versionInput = requireEnv('OC_VERSION_INPUT');
   const ocpBase = versionInput.split('_')[0];
 
-  let mirror: string;
-  let ocpChannel = '';
-
-  if (/^\d+\.\d+\.\d+$/.test(ocpBase)) {
-    console.log(`Using pinned OCP version: ${ocpBase}`);
-    mirror = `https://mirror.openshift.com/pub/openshift-v4/x86_64/clients/ocp/${ocpBase}`;
-  } else {
-    ocpChannel = `stable-${ocpBase}`;
-    console.log(`Resolving ${ocpChannel} to latest patch version...`);
-    mirror = `https://mirror.openshift.com/pub/openshift-v4/x86_64/clients/ocp/${ocpChannel}`;
-  }
+  const { mirror, ocpChannel } = /^\d+\.\d+\.\d+$/.test(ocpBase)
+    ? ((): { mirror: string; ocpChannel: string } => {
+        console.log(`Using pinned OCP version: ${ocpBase}`);
+        return {
+          mirror: `https://mirror.openshift.com/pub/openshift-v4/x86_64/clients/ocp/${ocpBase}`,
+          ocpChannel: '',
+        };
+      })()
+    : ((): { mirror: string; ocpChannel: string } => {
+        const channel = `stable-${ocpBase}`;
+        console.log(`Resolving ${channel} to latest patch version...`);
+        return {
+          mirror: `https://mirror.openshift.com/pub/openshift-v4/x86_64/clients/ocp/${channel}`,
+          ocpChannel: channel,
+        };
+      })();
 
   console.log('Downloading openshift-install...');
   execSync(
@@ -64,4 +69,7 @@ const main = (): void => {
   }
 };
 
-main();
+void main().catch((err) => {
+  console.error(`::error::${err instanceof Error ? err.message : err}`);
+  process.exit(1);
+});

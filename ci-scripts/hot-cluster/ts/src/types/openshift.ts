@@ -13,14 +13,14 @@ export type Route = {
   metadata: V1ObjectMeta;
   spec: {
     host?: string;
-    to: { kind: string; name: string };
-    port?: { targetPort: string | number };
+    port?: { targetPort: number | string };
     tls?: { termination: string };
+    to: { kind: string; name: string };
   };
   status?: {
     ingress?: Array<{
+      conditions?: Array<{ status: string; type: string }>;
       host: string;
-      conditions?: Array<{ type: string; status: string }>;
     }>;
   };
 };
@@ -29,11 +29,11 @@ export type Route = {
 
 export type OAuthClient = {
   apiVersion: 'oauth.openshift.io/v1';
+  grantMethod?: string;
   kind: 'OAuthClient';
   metadata: V1ObjectMeta;
-  grantMethod?: string;
-  secret?: string;
   redirectURIs?: string[];
+  secret?: string;
 };
 
 // --- Console ---
@@ -45,10 +45,10 @@ export type ConsolePlugin = {
   spec: {
     displayName: string;
     service: {
+      basePath?: string;
       name: string;
       namespace: string;
       port: number;
-      basePath?: string;
     };
   };
 };
@@ -61,9 +61,9 @@ export type ClusterVersion = {
   metadata: V1ObjectMeta;
   spec: { clusterID?: string };
   status?: {
-    desired?: { version: string; image: string };
-    history?: Array<{ version: string; state: string; completionTime?: string }>;
-    conditions?: Array<{ type: string; status: string; message?: string }>;
+    conditions?: Array<{ message?: string; status: string; type: string }>;
+    desired?: { image: string; version: string };
+    history?: Array<{ completionTime?: string; state: string; version: string }>;
   };
 };
 
@@ -72,20 +72,20 @@ export type IngressConfig = {
   kind: 'Ingress';
   metadata: V1ObjectMeta;
   spec: {
-    domain?: string;
     appsDomain?: string;
+    domain?: string;
   };
 };
 
 // --- SecurityContextConstraints ---
 
 export type SecurityContextConstraints = {
-  apiVersion: 'security.openshift.io/v1';
-  kind: 'SecurityContextConstraints';
-  metadata: V1ObjectMeta;
   allowHostDirVolumePlugin?: boolean;
   allowHostNetwork?: boolean;
   allowHostPID?: boolean;
   allowPrivilegedContainer?: boolean;
+  apiVersion: 'security.openshift.io/v1';
+  kind: 'SecurityContextConstraints';
+  metadata: V1ObjectMeta;
   runAsUser?: { type: string };
 };

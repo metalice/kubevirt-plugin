@@ -3,7 +3,7 @@
  * Replaces ci-scripts/hot-cluster/js/pr-command-helpers.cjs.
  */
 
-import { Octokit } from '@octokit/rest';
+import { type Octokit } from '@octokit/rest';
 
 /** Best-effort emoji reaction on a comment. Never throws. */
 export const reactToComment = async (
@@ -11,14 +11,14 @@ export const reactToComment = async (
   owner: string,
   repo: string,
   commentId: number,
-  content: '+1' | '-1' | 'laugh' | 'confused' | 'heart' | 'hooray' | 'rocket' | 'eyes',
+  content: '-1' | '+1' | 'confused' | 'eyes' | 'heart' | 'hooray' | 'laugh' | 'rocket',
 ): Promise<void> => {
   try {
     await octokit.reactions.createForIssueComment({
-      owner,
-      repo,
       comment_id: commentId,
       content,
+      owner,
+      repo,
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -39,8 +39,9 @@ export const enforceCommentTrust = async (
   trusted: boolean,
   command: string,
 ): Promise<boolean> => {
+  const trustStatus = trusted ? 'trusted' : `untrusted, ignoring ${command}`;
   console.log(
-    `${author} is ${trusted ? '' : 'not '}listed in OWNERS (approvers/reviewers) — ${trusted ? 'trusted' : `untrusted, ignoring ${command}`}.`,
+    `${author} is ${trusted ? '' : 'not '}listed in OWNERS (approvers/reviewers) — ${trustStatus}.`,
   );
 
   if (!trusted) {

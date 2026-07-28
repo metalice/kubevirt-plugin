@@ -6,17 +6,19 @@
  * Reads: $GITHUB_WORKSPACE/review-data.json
  */
 
-import { readFileSync, appendFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import { requireEnv } from '../utils';
 
+import { failStep, setOutput } from '../shared/output';
+
 type ReviewData = {
-  prNumber: number;
-  reviewState: string;
-  reviewAuthor: string;
-  prAuthor: string;
   baseBranch: string;
+  prAuthor: string;
+  prNumber: number;
+  reviewAuthor: string;
+  reviewState: string;
 };
 
 const main = async (): Promise<void> => {
@@ -24,18 +26,13 @@ const main = async (): Promise<void> => {
   const dataPath = resolve(workspace, 'review-data.json');
   const data = JSON.parse(readFileSync(dataPath, 'utf8')) as ReviewData;
 
-  const lines = [
-    `pr_number=${data.prNumber}`,
-    `review_state=${data.reviewState}`,
-    `review_author=${data.reviewAuthor}`,
-    `pr_author=${data.prAuthor}`,
-    `base_branch=${data.baseBranch}`,
-  ];
-
-  appendFileSync(process.env.GITHUB_OUTPUT!, lines.join('\n') + '\n');
+  setOutput('pr_number', String(data.prNumber));
+  setOutput('review_state', data.reviewState);
+  setOutput('review_author', data.reviewAuthor);
+  setOutput('pr_author', data.prAuthor);
+  setOutput('base_branch', data.baseBranch);
 };
 
-main().catch((err) => {
-  console.error(`::error::${err instanceof Error ? err.message : err}`);
-  process.exit(1);
+void main().catch((err) => {
+  failStep(err instanceof Error ? err.message : String(err));
 });

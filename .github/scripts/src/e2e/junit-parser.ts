@@ -3,8 +3,8 @@
  * of failed tests. Designed to be embedded in a GitHub check-run summary.
  */
 
-const decode = (s: string): string =>
-  s
+const decode = (text: string): string =>
+  text
     .replace(/&amp;/g, '&')
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
@@ -13,47 +13,48 @@ const decode = (s: string): string =>
     .replace(/&#10;/g, ' ')
     .replace(/&#13;/g, '');
 
-const attr = (el: string, name: string): string => {
-  const m = el.match(new RegExp(name + '="([^"]*)"'));
-  return m ? decode(m[1]) : '';
+const attr = (element: string, name: string): string => {
+  const match = new RegExp(name + '="([^"]*)"').exec(element);
+  return match ? decode(match[1]) : '';
 };
 
 export type TestFailure = {
+  message: string;
   name: string;
   suite: string;
-  message: string;
 };
 
 export type JUnitSummary = {
-  total: number;
   failed: number;
+  failures: TestFailure[];
   passed: number;
   skipped: number;
-  failures: TestFailure[];
+  total: number;
 };
 
 /** Parse JUnit XML string into a structured summary. */
 export const parseJUnitXml = (xml: string): JUnitSummary => {
-  const root = xml.match(/<testsuites[^>]*>/);
+  const root = /<testsuites[^>]*>/.exec(xml);
   const total = root ? Number(attr(root[0], 'tests')) || 0 : 0;
   const failed = root ? Number(attr(root[0], 'failures')) || 0 : 0;
   const skipped = root ? Number(attr(root[0], 'skipped')) || 0 : 0;
   const passed = total - failed - skipped;
 
-  const failures: TestFailure[] = [];
-  const re = /<testcase\s+([\s\S]*?)>([\s\S]*?)<\/testcase>/g;
-  let m;
-  while ((m = re.exec(xml)) !== null) {
-    if (!m[2].includes('<failure')) continue;
-    const failTag = m[2].match(/<failure\s+([\s\S]*?)(?:\/>|>[\s\S]*?<\/failure>)/);
-    failures.push({
-      name: attr(m[1], 'name'),
-      suite: attr(m[1], 'classname'),
-      message: failTag ? attr(failTag[1], 'message') : '',
+  const testCaseRegex = /<testcase\s+([^>]*)>([^<]*(?:<(?!\/testcase>)[^<]*)*)<\/testcase>/g;
+  const failures: TestFailure[] = Array.from(xml.matchAll(testCaseRegex))
+    .filter((match) => match[2].includes('<failure'))
+    .map((match) => {
+      const failTag = match[2].match(
+        /<failure\s+([^>]*?)(?:\/>|>[^<]*(?:<(?!\/failure>)[^<]*)*<\/failure>)/,
+      );
+      return {
+        message: failTag ? attr(failTag[1], 'message') : '',
+        name: attr(match[1], 'name'),
+        suite: attr(match[1], 'classname'),
+      };
     });
-  }
 
-  return { total, failed, passed, skipped, failures };
+  return { failed, failures, passed, skipped, total };
 };
 
 const MAX_FAILURES_DISPLAYED = 25;
@@ -61,25 +62,28 @@ const MAX_SUMMARY_LENGTH = 60_000;
 
 /** Format a JUnit summary as a markdown table suitable for a check-run summary. */
 export const formatFailureSummary = (summary: JUnitSummary): string => {
-  if (summary.failures.length === 0) return '';
-
-  let out = `**${summary.failed}** of **${summary.total}** tests failed, **${summary.passed}** passed`;
-  if (summary.skipped > 0) out += `, ${summary.skipped} skipped`;
-  out += '\n\n| Test | Error |\n| --- | --- |\n';
-
-  for (const f of summary.failures.slice(0, MAX_FAILURES_DISPLAYED)) {
-    const name = f.name.replace(/\|/g, '\\|').replace(/\n/g, ' ');
-    const msg = f.message.replace(/\|/g, '\\|').replace(/\n/g, ' ').substring(0, 200);
-    out += `| ${name} | ${msg} |\n`;
+  if (summary.failures.length === 0) {
+    return '';
   }
 
-  if (summary.failures.length > MAX_FAILURES_DISPLAYED) {
-    out += `\n_...and ${summary.failures.length - MAX_FAILURES_DISPLAYED} more failures (see workflow artifacts for full report)_\n`;
-  }
+  const header =
+    `**${summary.failed}** of **${summary.total}** tests failed, **${summary.passed}** passed` +
+    (summary.skipped > 0 ? `, ${summary.skipped} skipped` : '');
 
-  if (out.length > MAX_SUMMARY_LENGTH) {
-    out = out.substring(0, MAX_SUMMARY_LENGTH) + '\n\n_...truncated_\n';
-  }
+  const rows = summary.failures.slice(0, MAX_FAILURES_DISPLAYED).map((failure) => {
+    const name = failure.name.replace(/\|/g, '\\|').replace(/\n/g, ' ');
+    const msg = failure.message.replace(/\|/g, '\\|').replace(/\n/g, ' ').substring(0, 200);
+    return `| ${name} | ${msg} |`;
+  });
 
-  return out;
+  const overflow =
+    summary.failures.length > MAX_FAILURES_DISPLAYED
+      ? `\n_...and ${summary.failures.length - MAX_FAILURES_DISPLAYED} more failures (see workflow artifacts for full report)_\n`
+      : '';
+
+  const out = [header, '\n\n| Test | Error |\n| --- | --- |\n', rows.join('\n'), overflow].join('');
+
+  return out.length > MAX_SUMMARY_LENGTH
+    ? out.substring(0, MAX_SUMMARY_LENGTH) + '\n\n_...truncated_\n'
+    : out;
 };

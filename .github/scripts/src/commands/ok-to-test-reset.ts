@@ -7,13 +7,14 @@
 
 import { Octokit } from '@octokit/rest';
 
-import { requireEnv } from '../utils';
-import { getRepoContext } from '../shared/actions-context';
 import { removeLabel } from '../github-comments';
+import { requireEnv } from '../utils';
+
+import { getRepoContext } from '../shared/actions-context';
 import { failStep } from '../shared/output';
 
 const main = async (): Promise<void> => {
-  const token = process.env.BOT_TOKEN || requireEnv('GITHUB_TOKEN');
+  const token = process.env.BOT_TOKEN ?? requireEnv('GITHUB_TOKEN');
   const { owner, repo } = getRepoContext();
   const prNumber = Number(requireEnv('PR_NUMBER'));
   const octokit = new Octokit({ auth: token });
@@ -22,6 +23,6 @@ const main = async (): Promise<void> => {
   console.log(`Removed ok-to-test label from PR #${prNumber}`);
 };
 
-main().catch((err) => {
+void main().catch((err) => {
   failStep(err instanceof Error ? err.message : String(err));
 });

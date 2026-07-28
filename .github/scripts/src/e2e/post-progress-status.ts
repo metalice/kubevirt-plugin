@@ -12,6 +12,7 @@
 import { Octokit } from '@octokit/rest';
 
 import { requireEnv } from '../utils';
+
 import { getRepoContext } from '../shared/actions-context';
 
 const main = async (): Promise<void> => {
@@ -21,18 +22,20 @@ const main = async (): Promise<void> => {
   const serverUrl = process.env.GITHUB_SERVER_URL ?? 'https://github.com';
 
   await octokit.repos.createCommitStatus({
+    context: requireEnv('STATUS_CONTEXT'),
+    description: requireEnv('STATUS_DESCRIPTION'),
     owner,
     repo,
     sha: requireEnv('STATUS_HEAD_SHA'),
-    context: requireEnv('STATUS_CONTEXT'),
-    state: requireEnv('STATUS_STATE') as 'pending' | 'success' | 'failure',
-    description: requireEnv('STATUS_DESCRIPTION'),
+    state: requireEnv('STATUS_STATE') as 'failure' | 'pending' | 'success',
     target_url: `${serverUrl}/${owner}/${repo}/actions/runs/${runId}`,
   });
 
-  console.log(`Posted progress status: ${process.env.STATUS_STATE} — ${process.env.STATUS_DESCRIPTION}`);
+  console.log(
+    `Posted progress status: ${process.env.STATUS_STATE} — ${process.env.STATUS_DESCRIPTION}`,
+  );
 };
 
-main().catch((err) => {
+void main().catch((err) => {
   console.warn(`Could not post progress status: ${err instanceof Error ? err.message : err}`);
 });

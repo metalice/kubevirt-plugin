@@ -8,6 +8,7 @@
 import { appendFileSync } from 'node:fs';
 
 import { KubeClient } from '../kube-client';
+
 import type { ClusterVersion } from '../types/openshift';
 
 const REGISTRY = process.env.CONSOLE_IMAGE_REGISTRY ?? 'quay.io/openshift/origin-console';
@@ -29,19 +30,20 @@ const main = async (): Promise<void> => {
 
   const client = KubeClient.fromKubeconfig();
 
-  let version: string | undefined;
-  try {
-    const cv = (await client.customObjects.getClusterCustomObject({
-      group: 'config.openshift.io',
-      version: 'v1',
-      plural: 'clusterversions',
-      name: 'version',
-    })) as unknown as ClusterVersion;
+  const version = await (async (): Promise<string | undefined> => {
+    try {
+      const clusterVersion = (await client.customObjects.getClusterCustomObject({
+        group: 'config.openshift.io',
+        name: 'version',
+        plural: 'clusterversions',
+        version: 'v1',
+      })) as unknown as ClusterVersion;
 
-    version = cv.status?.desired?.version;
-  } catch {
-    /* cluster version not available */
-  }
+      return clusterVersion.status?.desired?.version;
+    } catch {
+      return undefined;
+    }
+  })();
 
   if (!version) {
     if (process.env.CI) {
@@ -94,7 +96,7 @@ const outputImage = (image: string): void => {
   console.log(`CONSOLE_IMAGE=${image}`);
 };
 
-main().catch((err) => {
+void main().catch((err) => {
   console.error(`::error::${err instanceof Error ? err.message : err}`);
   process.exit(1);
 });

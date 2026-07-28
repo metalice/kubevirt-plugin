@@ -27,7 +27,7 @@ const main = async (): Promise<void> => {
   );
 };
 
-main().catch((err) => {
+void main().catch((err) => {
   console.error(`::error::${err instanceof Error ? err.message : err}`);
   process.exit(1);
 });

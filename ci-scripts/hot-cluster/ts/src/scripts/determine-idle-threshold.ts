@@ -7,36 +7,41 @@
  * Optional env: INPUT_IDLE_THRESHOLD
  */
 
-import { appendFileSync } from 'node:fs';
-
 import { requireEnv } from '../kube-client';
+import { setOutput } from '../utils';
 
 const MAIN_CLUSTER_NAME = 'kubevirt-plugin-ci';
 const MAIN_CLUSTER_THRESHOLD = 240;
 const RELEASE_BRANCH_THRESHOLD = 120;
+
+const computeThreshold = (
+  eventName: string,
+  inputThreshold: string | undefined,
+  clusterName: string,
+): number => {
+  if (eventName === 'workflow_dispatch' && inputThreshold) {
+    console.log(`Using workflow_dispatch override: ${parseInt(inputThreshold, 10)} minutes`);
+    return parseInt(inputThreshold, 10);
+  }
+  if (clusterName === MAIN_CLUSTER_NAME) {
+    console.log(`Default/main cluster: ${MAIN_CLUSTER_THRESHOLD} minutes (4h)`);
+    return MAIN_CLUSTER_THRESHOLD;
+  }
+  console.log(`Release-branch cluster: ${RELEASE_BRANCH_THRESHOLD} minutes (2h)`);
+  return RELEASE_BRANCH_THRESHOLD;
+};
 
 const main = async (): Promise<void> => {
   const clusterName = requireEnv('CLUSTER_NAME');
   const eventName = requireEnv('EVENT_NAME');
   const inputThreshold = process.env.INPUT_IDLE_THRESHOLD;
 
-  let minutes: number;
+  const minutes = computeThreshold(eventName, inputThreshold, clusterName);
 
-  if (eventName === 'workflow_dispatch' && inputThreshold) {
-    minutes = parseInt(inputThreshold, 10);
-    console.log(`Using workflow_dispatch override: ${minutes} minutes`);
-  } else if (clusterName === MAIN_CLUSTER_NAME) {
-    minutes = MAIN_CLUSTER_THRESHOLD;
-    console.log(`Default/main cluster: ${minutes} minutes (4h)`);
-  } else {
-    minutes = RELEASE_BRANCH_THRESHOLD;
-    console.log(`Release-branch cluster: ${minutes} minutes (2h)`);
-  }
-
-  appendFileSync(process.env.GITHUB_OUTPUT!, `minutes=${minutes}\n`);
+  setOutput('minutes', String(minutes));
 };
 
-main().catch((err) => {
+void main().catch((err) => {
   console.error(`::error::${err instanceof Error ? err.message : err}`);
   process.exit(1);
 });

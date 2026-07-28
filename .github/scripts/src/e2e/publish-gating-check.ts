@@ -12,23 +12,24 @@
 import { Octokit } from '@octokit/rest';
 
 import { requireEnv } from '../utils';
+
 import { getRepoContext } from '../shared/actions-context';
 import { createCheckRun, updateCheckRun } from '../shared/checks';
-import { setOutput, failStep } from '../shared/output';
+import { failStep, setOutput } from '../shared/output';
 
 const main = async (): Promise<void> => {
   const token = requireEnv('GITHUB_TOKEN');
   const octokit = new Octokit({ auth: token });
   const { owner, repo } = getRepoContext();
 
-  const status = requireEnv('CHECK_STATUS') as 'queued' | 'in_progress' | 'completed';
+  const status = requireEnv('CHECK_STATUS') as 'completed' | 'in_progress' | 'queued';
   const title = requireEnv('CHECK_TITLE');
   const summary = requireEnv('CHECK_SUMMARY');
-  const conclusion = process.env.CHECK_CONCLUSION || undefined;
-  const detailsUrl = process.env.CHECK_DETAILS_URL || undefined;
-  const name = process.env.CHECK_NAME || 'Run Gating Tests';
-  const existingCheckRunId = process.env.CHECK_RUN_ID || '';
-  const headSha = process.env.CHECK_HEAD_SHA || '';
+  const conclusion = process.env.CHECK_CONCLUSION ?? undefined;
+  const detailsUrl = process.env.CHECK_DETAILS_URL ?? undefined;
+  const name = process.env.CHECK_NAME ?? 'Run Gating Tests';
+  const existingCheckRunId = process.env.CHECK_RUN_ID ?? '';
+  const headSha = process.env.CHECK_HEAD_SHA ?? '';
 
   if (!existingCheckRunId && !headSha) {
     failStep(
@@ -37,42 +38,43 @@ const main = async (): Promise<void> => {
     );
   }
 
-  let checkRunId: number;
-
-  if (existingCheckRunId) {
-    const id = Number(existingCheckRunId);
-    if (!Number.isInteger(id) || id <= 0) {
-      failStep(`publish-gating-check received an invalid CHECK_RUN_ID: "${existingCheckRunId}".`);
+  const checkRunId: number = await (async (): Promise<number> => {
+    if (existingCheckRunId) {
+      const parsedId = Number(existingCheckRunId);
+      if (!Number.isInteger(parsedId) || parsedId <= 0) {
+        failStep(`publish-gating-check received an invalid CHECK_RUN_ID: "${existingCheckRunId}".`);
+      }
+      const result = await updateCheckRun(octokit, {
+        checkRunId: parsedId,
+        conclusion,
+        detailsUrl,
+        owner,
+        repo,
+        status,
+        summary,
+        title,
+      });
+      console.log(`Updated check-run ${result} to "${status}".`);
+      return result;
     }
-    checkRunId = await updateCheckRun(octokit, {
-      owner,
-      repo,
-      checkRunId: id,
-      status,
+    const result = await createCheckRun(octokit, {
       conclusion,
-      title,
-      summary,
       detailsUrl,
-    });
-    console.log(`Updated check-run ${checkRunId} to "${status}".`);
-  } else {
-    checkRunId = await createCheckRun(octokit, {
-      owner,
-      repo,
-      name,
       headSha,
+      name,
+      owner,
+      repo,
       status,
-      conclusion,
-      title,
       summary,
-      detailsUrl,
+      title,
     });
-    console.log(`Created check-run ${checkRunId} ("${status}") for ${headSha}.`);
-  }
+    console.log(`Created check-run ${result} ("${status}") for ${headSha}.`);
+    return result;
+  })();
 
   setOutput('check_run_id', String(checkRunId));
 };
 
-main().catch((err) => {
+void main().catch((err) => {
   failStep(err instanceof Error ? err.message : String(err));
 });

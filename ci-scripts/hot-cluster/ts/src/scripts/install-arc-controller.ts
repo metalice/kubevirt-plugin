@@ -8,7 +8,7 @@
 import { execSync } from 'node:child_process';
 import { resolve } from 'node:path';
 
-import { KubeClient, requireEnv } from '../kube-client';
+import { KubeClient } from '../kube-client';
 
 const main = async (): Promise<void> => {
   const controllerNs = process.env.ARC_CONTROLLER_NS ?? 'arc-systems';
@@ -29,7 +29,9 @@ const main = async (): Promise<void> => {
   try {
     await client.coreV1.createNamespace({ body: { metadata: { name: controllerNs } } });
   } catch (err) {
-    if ((err as { statusCode?: number }).statusCode !== 409) throw err;
+    if ((err as { statusCode?: number }).statusCode !== 409) {
+      throw err;
+    }
   }
 
   // Apply SCC
@@ -62,7 +64,7 @@ const main = async (): Promise<void> => {
   console.log('\n=== ARC controller installation complete ===\n');
 };
 
-main().catch((err) => {
+void main().catch((err) => {
   console.error(`::error::${err instanceof Error ? err.message : err}`);
   process.exit(1);
 });

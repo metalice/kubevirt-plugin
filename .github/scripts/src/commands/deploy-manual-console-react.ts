@@ -11,7 +11,8 @@
 import { Octokit } from '@octokit/rest';
 
 import { requireEnv } from '../utils';
-import { getRepoContext, getRunUrl } from '../shared/actions-context';
+
+import { getRepoContext } from '../shared/actions-context';
 import { reactToComment } from '../shared/command-helpers';
 import { failStep } from '../shared/output';
 
@@ -31,9 +32,6 @@ const main = async (): Promise<void> => {
   const runUrl = `${serverUrl}/${repository}/actions/workflows/deploy-manual-console.yml`;
 
   await octokit.issues.createComment({
-    owner,
-    repo,
-    issue_number: issueNumber,
     body: [
       `🚀 Dispatched a manual console deploy for this PR (cluster \`${clusterName}\`, infrastructure \`${infraType}\`).`,
       '',
@@ -42,9 +40,12 @@ const main = async (): Promise<void> => {
       '',
       `If the PR author isn't listed in OWNERS, this dispatch will fail at its own trust check -- see the [Actions tab](${runUrl}) if nothing shows up.`,
     ].join('\n'),
+    issue_number: issueNumber,
+    owner,
+    repo,
   });
 };
 
-main().catch((err) => {
+void main().catch((err) => {
   failStep(err instanceof Error ? err.message : String(err));
 });

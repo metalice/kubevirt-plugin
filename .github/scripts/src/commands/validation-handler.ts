@@ -7,20 +7,20 @@
 import type { CommandContext } from './dispatcher';
 
 export const executeValidationCommand = async (ctx: CommandContext): Promise<void> => {
-  const { data: pr } = await ctx.octokit.pulls.get({
+  const { data: pullRequest } = await ctx.octokit.pulls.get({
     owner: ctx.owner,
-    repo: ctx.repo,
     pull_number: ctx.prNumber,
+    repo: ctx.repo,
   });
 
   process.env.COMMENT_BODY = ctx.commentBody;
   process.env.PR_NUMBER = String(ctx.prNumber);
   process.env.COMMENT_ID = String(ctx.commentId);
   process.env.COMMENT_AUTHOR = ctx.author;
-  process.env.PR_TITLE = pr.title;
-  process.env.BASE_BRANCH = pr.base.ref;
-  process.env.PR_HEAD_SHA = pr.head.sha;
-  process.env.PR_AUTHOR = pr.user?.login ?? '';
+  process.env.PR_TITLE = pullRequest.title;
+  process.env.BASE_BRANCH = pullRequest.base.ref;
+  process.env.PR_HEAD_SHA = pullRequest.head.sha;
+  process.env.PR_AUTHOR = pullRequest.user?.login ?? '';
 
   await import('../validation/commands/index');
 };

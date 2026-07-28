@@ -10,12 +10,12 @@ import { execSync } from 'node:child_process';
 import { requireEnv } from '../kube-client';
 
 type ClassicLocation = {
-  kind: string;
-  id: string;
   flavors: string;
+  id: string;
+  kind: string;
 };
 
-const main = (): void => {
+const main = async (): Promise<void> => {
   const zone = requireEnv('ZONE');
   const flavor = requireEnv('FLAVOR');
 
@@ -26,7 +26,7 @@ const main = (): void => {
       encoding: 'utf8',
     },
   );
-  const allLocations: ClassicLocation[] = JSON.parse(locationsRaw);
+  const allLocations = JSON.parse(locationsRaw) as ClassicLocation[];
   const dcLocations = allLocations.filter((loc) => loc.kind === 'dc');
 
   console.log(`Checking zone '${zone}' exists...`);
@@ -35,8 +35,8 @@ const main = (): void => {
     console.error(`ERROR: Zone '${zone}' not found in classic infrastructure locations.`);
     console.error('');
     console.error('Available zones:');
-    for (const id of dcLocations.map((loc) => loc.id).sort()) {
-      console.error(`  ${id}`);
+    for (const zoneId of dcLocations.map((loc) => loc.id).sort((a, b) => a.localeCompare(b))) {
+      console.error(`  ${zoneId}`);
     }
     process.exit(1);
   }
@@ -48,12 +48,17 @@ const main = (): void => {
     console.error(`ERROR: Flavor '${flavor}' is not available in zone '${zone}'.`);
     console.error('');
     console.error(`Available flavors in '${zone}':`);
-    for (const f of flavorList.sort()) {
-      console.error(`  ${f}`);
+    for (const availableFlavor of [...flavorList].sort((left: string, right: string) =>
+      left.localeCompare(right),
+    )) {
+      console.error(`  ${availableFlavor}`);
     }
-    process.exit(2);
+    process.exit(1);
   }
   console.log(`Flavor '${flavor}' is available in zone '${zone}'`);
 };
 
-main();
+void main().catch((err) => {
+  console.error(`::error::${err instanceof Error ? err.message : err}`);
+  process.exit(1);
+});

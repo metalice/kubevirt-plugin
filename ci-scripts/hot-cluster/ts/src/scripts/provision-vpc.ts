@@ -5,17 +5,16 @@
  * Required env: VPC_NAME, ZONE, IC_KEY (or IC_API_KEY)
  */
 
-import { appendFileSync } from 'node:fs';
-
-import VpcV1 from 'ibm-vpc/vpc/v1';
 import { IamAuthenticator } from 'ibm-cloud-sdk-core';
+import VpcV1 from 'ibm-vpc/vpc/v1';
+import { appendFileSync } from 'node:fs';
 
 import { requireEnv } from '../kube-client';
 
 const main = async (): Promise<void> => {
   const vpcName = requireEnv('VPC_NAME');
   const zone = requireEnv('ZONE');
-  const apiKey = process.env.IC_KEY || requireEnv('IC_API_KEY');
+  const apiKey = process.env.IC_KEY ?? requireEnv('IC_API_KEY');
   const vpcRegion = zone.replace(/-\d+$/, '');
 
   console.log(`=== VPC Gen2 provisioning ===`);
@@ -27,63 +26,63 @@ const main = async (): Promise<void> => {
   });
 
   // --- VPC ---
-  let vpcId: string;
-  const { result: vpcs } = await vpc.listVpcs();
-  const existing = vpcs.vpcs?.find((v) => v.name === vpcName);
+  const vpcId = await (async (): Promise<string> => {
+    const { result: vpcs } = await vpc.listVpcs();
+    const existing = vpcs.vpcs?.find((vpcEntry) => vpcEntry.name === vpcName);
 
-  if (existing) {
-    vpcId = existing.id!;
-    console.log(`Reusing existing VPC '${vpcName}': ${vpcId}`);
-  } else {
+    if (existing) {
+      console.log(`Reusing existing VPC '${vpcName}': ${existing.id ?? ''}`);
+      return existing.id ?? '';
+    }
     console.log(`Creating VPC '${vpcName}'...`);
     const { result } = await vpc.createVpc({ name: vpcName });
-    vpcId = result.id!;
-    console.log(`Created VPC: ${vpcId}`);
-  }
+    console.log(`Created VPC: ${result.id ?? ''}`);
+    return result.id ?? '';
+  })();
 
   // --- Subnet ---
   const subnetName = `${vpcName}-subnet-${zone}`;
-  let subnetId: string;
-  const { result: subnets } = await vpc.listSubnets();
-  const existingSubnet = subnets.subnets?.find((s) => s.name === subnetName);
+  const subnetId = await (async (): Promise<string> => {
+    const { result: subnets } = await vpc.listSubnets();
+    const existingSubnet = subnets.subnets?.find((subnetEntry) => subnetEntry.name === subnetName);
 
-  if (existingSubnet) {
-    subnetId = existingSubnet.id!;
-    console.log(`Reusing existing subnet '${subnetName}': ${subnetId}`);
-  } else {
+    if (existingSubnet) {
+      console.log(`Reusing existing subnet '${subnetName}': ${existingSubnet.id ?? ''}`);
+      return existingSubnet.id ?? '';
+    }
     console.log(`Creating subnet '${subnetName}' in zone '${zone}'...`);
     const { result } = await vpc.createSubnet({
       subnetPrototype: {
+        ip_version: 'ipv4',
         name: subnetName,
+        total_ipv4_address_count: 256,
         vpc: { id: vpcId },
         zone: { name: zone } as unknown as VpcV1.ZoneIdentity,
-        total_ipv4_address_count: 256,
-        ip_version: 'ipv4',
       } as VpcV1.SubnetPrototypeSubnetByTotalCount,
     });
-    subnetId = result.id!;
-    console.log(`Created subnet: ${subnetId}`);
-  }
+    console.log(`Created subnet: ${result.id ?? ''}`);
+    return result.id ?? '';
+  })();
 
   // --- Public Gateway ---
   const gwName = `${vpcName}-gw-${zone}`;
-  let gwId: string;
-  const { result: gateways } = await vpc.listPublicGateways();
-  const existingGw = gateways.public_gateways?.find((g) => g.name === gwName);
+  const gwId = await (async (): Promise<string> => {
+    const { result: gateways } = await vpc.listPublicGateways();
+    const existingGw = gateways.public_gateways?.find((gateway) => gateway.name === gwName);
 
-  if (existingGw) {
-    gwId = existingGw.id!;
-    console.log(`Reusing existing public gateway '${gwName}': ${gwId}`);
-  } else {
+    if (existingGw) {
+      console.log(`Reusing existing public gateway '${gwName}': ${existingGw.id ?? ''}`);
+      return existingGw.id ?? '';
+    }
     console.log(`Creating public gateway '${gwName}'...`);
     const { result } = await vpc.createPublicGateway({
       name: gwName,
       vpc: { id: vpcId },
       zone: { name: zone },
     });
-    gwId = result.id!;
-    console.log(`Created public gateway: ${gwId}`);
-  }
+    console.log(`Created public gateway: ${result.id ?? ''}`);
+    return result.id ?? '';
+  })();
 
   // Attach gateway to subnet
   console.log('Attaching public gateway to subnet...');
@@ -103,7 +102,7 @@ const main = async (): Promise<void> => {
   }
 };
 
-main().catch((err) => {
+void main().catch((err) => {
   console.error(`::error::VPC provisioning failed: ${err instanceof Error ? err.message : err}`);
   process.exit(1);
 });

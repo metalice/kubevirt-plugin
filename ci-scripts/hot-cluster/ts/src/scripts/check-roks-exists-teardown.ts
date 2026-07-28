@@ -6,24 +6,25 @@
  */
 
 import { execSync } from 'node:child_process';
-import { appendFileSync } from 'node:fs';
 
 import { requireEnv } from '../kube-client';
+import { setOutput } from '../utils';
 
 const main = async (): Promise<void> => {
   const clusterName = requireEnv('CLUSTER_NAME');
 
-  let exists = false;
-  try {
-    execSync(`ibmcloud oc cluster get --cluster "${clusterName}"`, { stdio: 'pipe' });
-    exists = true;
-  } catch {
-    exists = false;
-  }
+  const exists = ((): boolean => {
+    try {
+      execSync(`ibmcloud oc cluster get --cluster "${clusterName}"`, { stdio: 'pipe' });
+      return true;
+    } catch {
+      return false;
+    }
+  })();
 
   if (exists) {
     console.log(`Cluster '${clusterName}' found`);
-    appendFileSync(process.env.GITHUB_OUTPUT!, 'exists=true\n');
+    setOutput('exists', 'true');
     try {
       execSync(`ibmcloud oc cluster config --cluster "${clusterName}" --admin`, {
         stdio: 'inherit',
@@ -33,11 +34,11 @@ const main = async (): Promise<void> => {
     }
   } else {
     console.log(`Cluster '${clusterName}' not found, nothing to tear down`);
-    appendFileSync(process.env.GITHUB_OUTPUT!, 'exists=false\n');
+    setOutput('exists', 'false');
   }
 };
 
-main().catch((err) => {
+void main().catch((err) => {
   console.error(`::error::${err instanceof Error ? err.message : err}`);
   process.exit(1);
 });

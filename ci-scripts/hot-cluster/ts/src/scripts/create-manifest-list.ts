@@ -5,8 +5,8 @@
  * Required env: REGISTRY_IMAGE, VERSION_TAG
  */
 
-import { readdirSync } from 'node:fs';
 import { execSync } from 'node:child_process';
+import { readdirSync } from 'node:fs';
 
 import { requireEnv } from '../kube-client';
 
@@ -20,14 +20,14 @@ const main = async (): Promise<void> => {
     throw new Error(`No digest files found in ${digestDir}`);
   }
 
-  const sources = digests.map((d) => `${registryImage}@sha256:${d}`).join(' ');
+  const sources = digests.map((digest) => `${registryImage}@sha256:${digest}`).join(' ');
   const cmd = `docker buildx imagetools create -t ${registryImage}:${versionTag} ${sources}`;
 
   console.log(`Creating manifest: ${cmd}`);
   execSync(cmd, { stdio: 'inherit' });
 };
 
-main().catch((err) => {
+void main().catch((err) => {
   console.error(`::error::${err instanceof Error ? err.message : err}`);
   process.exit(1);
 });

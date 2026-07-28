@@ -13,12 +13,13 @@
 import { Octokit } from '@octokit/rest';
 
 import { requireEnv } from '../utils';
+
 import { getRepoContext } from '../shared/actions-context';
-import { reactToComment, enforceCommentTrust } from '../shared/command-helpers';
-import { setOutput, failStep } from '../shared/output';
+import { enforceCommentTrust, reactToComment } from '../shared/command-helpers';
+import { failStep, setOutput } from '../shared/output';
 
 const main = async (): Promise<void> => {
-  const token = process.env.BOT_TOKEN || requireEnv('GITHUB_TOKEN');
+  const token = process.env.BOT_TOKEN ?? requireEnv('GITHUB_TOKEN');
   const { owner, repo } = getRepoContext();
   const prNumber = Number(requireEnv('PR_NUMBER'));
   const commentId = Number(requireEnv('COMMENT_ID'));
@@ -31,36 +32,40 @@ const main = async (): Promise<void> => {
     return;
   }
 
-  const { data: pr } = await octokit.pulls.get({ owner, repo, pull_number: prNumber });
-  console.log(`/hold-e2e requested by ${author} on PR #${prNumber} (HEAD: ${pr.head.sha})`);
+  const { data: pullRequest } = await octokit.pulls.get({ owner, pull_number: prNumber, repo });
+  console.log(
+    `/hold-e2e requested by ${author} on PR #${prNumber} (HEAD: ${pullRequest.head.sha})`,
+  );
 
   await reactToComment(octokit, owner, repo, commentId, 'eyes');
-  setOutput('head_sha', pr.head.sha);
+  setOutput('head_sha', pullRequest.head.sha);
 };
 
-import type { CommandContext } from './dispatcher';
 import { addLabel } from '../github-comments';
+
+import type { CommandContext } from './dispatcher';
 
 /** Called by the dispatcher. Returns head SHA for the mark-held job. */
 export const executeHoldE2E = async (ctx: CommandContext): Promise<string> => {
-  const { data: pr } = await ctx.octokit.pulls.get({
+  const { data: pullRequest } = await ctx.octokit.pulls.get({
     owner: ctx.owner,
-    repo: ctx.repo,
     pull_number: ctx.prNumber,
+    repo: ctx.repo,
   });
-  console.log(`/hold-e2e requested by ${ctx.author} on PR #${ctx.prNumber} (HEAD: ${pr.head.sha})`);
+  console.log(
+    `/hold-e2e requested by ${ctx.author} on PR #${ctx.prNumber} (HEAD: ${pullRequest.head.sha})`,
+  );
   await reactToComment(ctx.octokit, ctx.owner, ctx.repo, ctx.commentId, 'eyes');
 
-  // Apply e2e-hold label
   await addLabel(ctx.octokit, ctx.owner, ctx.repo, ctx.prNumber, 'e2e-hold', {
     color: 'b60205',
     description: 'Hot Cluster E2E is on hold for this PR -- comment /retest-e2e to lift it',
   });
 
-  setOutput('head_sha', pr.head.sha);
-  return pr.head.sha;
+  setOutput('head_sha', pullRequest.head.sha);
+  return pullRequest.head.sha;
 };
 
 if (require.main === module) {
-  main().catch((err) => failStep(err instanceof Error ? err.message : String(err)));
+  void main().catch((err) => failStep(err instanceof Error ? err.message : String(err)));
 }

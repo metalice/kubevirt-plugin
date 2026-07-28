@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 
-import { Octokit } from '@octokit/rest';
+import { type Octokit } from '@octokit/rest';
 
 type OwnersData = {
   approvers: string[];
@@ -14,28 +14,31 @@ type OwnersData = {
 export const parseOwnersFile = (content: string): OwnersData => {
   const result: OwnersData = { approvers: [], reviewers: [] };
 
-  let currentSection: 'approvers' | 'reviewers' | null = null;
+  const lines = content.split('\n');
+  const sectionState = { current: null as 'approvers' | 'reviewers' | null };
 
-  for (const line of content.split('\n')) {
+  for (const line of lines) {
     const trimmed = line.trim();
 
     if (trimmed === 'approvers:') {
-      currentSection = 'approvers';
+      sectionState.current = 'approvers';
       continue;
     }
     if (trimmed === 'reviewers:') {
-      currentSection = 'reviewers';
+      sectionState.current = 'reviewers';
       continue;
     }
 
-    if (currentSection && trimmed.startsWith('- ')) {
+    if (sectionState.current && trimmed.startsWith('- ')) {
       const name = trimmed.slice(2).trim();
-      if (name) result[currentSection].push(name);
+      if (name) {
+        result[sectionState.current].push(name);
+      }
       continue;
     }
 
-    if (currentSection && !trimmed.startsWith('#') && trimmed !== '') {
-      currentSection = null;
+    if (sectionState.current && !trimmed.startsWith('#') && trimmed !== '') {
+      sectionState.current = null;
     }
   }
 
@@ -52,8 +55,8 @@ export const isListedInLocalOwners = (login: string, ownersPath = 'OWNERS'): boo
     const owners = parseOwnersFile(content);
     const lower = login.toLowerCase();
     return (
-      owners.approvers.some((a) => a.toLowerCase() === lower) ||
-      owners.reviewers.some((r) => r.toLowerCase() === lower)
+      owners.approvers.some((approver) => approver.toLowerCase() === lower) ||
+      owners.reviewers.some((reviewer) => reviewer.toLowerCase() === lower)
     );
   } catch {
     return false;
@@ -75,8 +78,8 @@ export const isListedInOwners = async (
   try {
     const { data } = await octokit.repos.getContent({
       owner,
-      repo,
       path: ownersPath,
+      repo,
       ...(ref ? { ref } : {}),
     });
 
@@ -85,8 +88,8 @@ export const isListedInOwners = async (
       const owners = parseOwnersFile(content);
       const lower = login.toLowerCase();
       return (
-        owners.approvers.some((a) => a.toLowerCase() === lower) ||
-        owners.reviewers.some((r) => r.toLowerCase() === lower)
+        owners.approvers.some((approver) => approver.toLowerCase() === lower) ||
+        owners.reviewers.some((reviewer) => reviewer.toLowerCase() === lower)
       );
     }
     return false;

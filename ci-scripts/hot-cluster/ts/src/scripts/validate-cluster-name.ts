@@ -8,7 +8,7 @@
 
 import { requireEnv } from '../kube-client';
 
-const main = (): void => {
+const main = async (): Promise<void> => {
   const clusterName = requireEnv('CLUSTER_NAME');
   const pattern = /^[a-z0-9]([a-z0-9-]{0,19}[a-z0-9])?$/;
 
@@ -27,4 +27,7 @@ const main = (): void => {
   console.log(`Cluster name '${clusterName}' is valid.`);
 };
 
-main();
+void main().catch((err) => {
+  console.error(`::error::${err instanceof Error ? err.message : err}`);
+  process.exit(1);
+});

@@ -6,15 +6,14 @@
  */
 
 import { execSync } from 'node:child_process';
-import { appendFileSync } from 'node:fs';
 import dns from 'node:dns/promises';
 
 import { requireEnv } from '../kube-client';
+import { setOutput } from '../utils';
 
 const main = async (): Promise<void> => {
   const clusterName = requireEnv('CLUSTER_NAME');
   const baseDomain = requireEnv('BASE_DOMAIN');
-  let infraType = '';
 
   // Try ROKS first
   try {
@@ -23,15 +22,15 @@ const main = async (): Promise<void> => {
       execSync(`ibmcloud oc cluster get --cluster "${clusterName}" --output json 2>/dev/null`, {
         encoding: 'utf8',
       }),
-    ) as { state?: string; provider?: string };
+    ) as { provider?: string; state?: string };
 
     const state = clusterJson.state ?? 'unknown';
     const provider = clusterJson.provider ?? 'classic';
     console.log(`ROKS cluster '${clusterName}' exists (state: ${state}, provider: ${provider})`);
 
-    infraType = provider === 'vpc-gen2' ? 'vpc' : 'classic';
-    appendFileSync(process.env.GITHUB_OUTPUT!, 'exists=true\n');
-    appendFileSync(process.env.GITHUB_OUTPUT!, `infra_type=${infraType}\n`);
+    const infraType = provider === 'vpc-gen2' ? 'vpc' : 'classic';
+    setOutput('exists', 'true');
+    setOutput('infra_type', infraType);
     return;
   } catch {
     // Not a ROKS cluster, try IPI
@@ -43,8 +42,8 @@ const main = async (): Promise<void> => {
     const addresses = await dns.resolve4(apiHost);
     if (addresses.length > 0) {
       console.log(`IPI cluster detected via DNS (${apiHost} resolves)`);
-      appendFileSync(process.env.GITHUB_OUTPUT!, 'exists=true\n');
-      appendFileSync(process.env.GITHUB_OUTPUT!, 'infra_type=ipi\n');
+      setOutput('exists', 'true');
+      setOutput('infra_type', 'ipi');
       return;
     }
   } catch {
@@ -52,11 +51,11 @@ const main = async (): Promise<void> => {
   }
 
   console.log(`No cluster '${clusterName}' found (ROKS or IPI), nothing to do`);
-  appendFileSync(process.env.GITHUB_OUTPUT!, 'exists=false\n');
-  appendFileSync(process.env.GITHUB_OUTPUT!, `infra_type=\n`);
+  setOutput('exists', 'false');
+  setOutput('infra_type', '');
 };
 
-main().catch((err) => {
+void main().catch((err) => {
   console.error(`::error::${err instanceof Error ? err.message : err}`);
   process.exit(1);
 });
