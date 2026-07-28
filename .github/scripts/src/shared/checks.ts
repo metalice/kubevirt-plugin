@@ -1,43 +1,45 @@
-import { Octokit } from '@octokit/rest';
+import { type Octokit } from '@octokit/rest';
+
+export { closeOrphanedCheckRuns } from './close-orphaned-checks';
 
 type CheckRunOutput = {
-  title: string;
   summary: string;
+  title: string;
 };
 
 type CreateCheckRunParams = {
+  conclusion?: string;
+  detailsUrl?: string;
+  headSha: string;
+  name: string;
   owner: string;
   repo: string;
-  name: string;
-  headSha: string;
-  status: 'queued' | 'in_progress' | 'completed';
-  conclusion?: string;
-  title: string;
+  status: 'completed' | 'in_progress' | 'queued';
   summary: string;
-  detailsUrl?: string;
+  title: string;
 };
 
 type UpdateCheckRunParams = {
+  checkRunId: number;
+  conclusion?: string;
+  detailsUrl?: string;
   owner: string;
   repo: string;
-  checkRunId: number;
-  status: 'queued' | 'in_progress' | 'completed';
-  conclusion?: string;
-  title: string;
+  status: 'completed' | 'in_progress' | 'queued';
   summary: string;
-  detailsUrl?: string;
+  title: string;
 };
 
 const buildPayload = (
   params: CreateCheckRunParams | UpdateCheckRunParams,
 ): Record<string, unknown> => {
-  const output: CheckRunOutput = { title: params.title, summary: params.summary };
+  const output: CheckRunOutput = { summary: params.summary, title: params.title };
 
   const payload: Record<string, unknown> = {
+    output,
     owner: params.owner,
     repo: params.repo,
     status: params.status,
-    output,
   };
 
   if (params.status === 'completed') {
@@ -59,8 +61,8 @@ export const createCheckRun = async (
   const payload = buildPayload(params);
   const { data } = await octokit.checks.create({
     ...payload,
-    name: params.name,
     head_sha: params.headSha,
+    name: params.name,
   } as Parameters<Octokit['checks']['create']>[0]);
 
   return data.id;
@@ -95,10 +97,10 @@ export const publishCheckRun = async (
 };
 
 type CheckRunInfo = {
+  conclusion: null | string;
   id: number;
+  output: { summary: null | string; title: null | string };
   status: string;
-  conclusion: string | null;
-  output: { title: string | null; summary: string | null };
 };
 
 /** List all check-runs for a given ref and check name. */
@@ -110,63 +112,20 @@ export const listCheckRunsForRef = async (
   checkName: string,
 ): Promise<CheckRunInfo[]> => {
   const runs = await octokit.paginate(octokit.checks.listForRef, {
-    owner,
-    repo,
-    ref,
     check_name: checkName,
+    owner,
     per_page: 100,
+    ref,
+    repo,
   });
 
   return runs.map((run) => ({
-    id: run.id,
-    status: run.status,
     conclusion: run.conclusion,
+    id: run.id,
     output: {
-      title: run.output?.title ?? null,
       summary: run.output?.summary ?? null,
+      title: run.output?.title ?? null,
     },
+    status: run.status,
   }));
-};
-
-/**
- * Close orphaned check-runs (stuck in non-completed state) that are older
- * than the given published check-run id. Returns the count of closed runs.
- */
-export const closeOrphanedCheckRuns = async (
-  octokit: Octokit,
-  owner: string,
-  repo: string,
-  ref: string,
-  checkName: string,
-  publishedCheckRunId: number,
-  detailsUrl: string,
-): Promise<number> => {
-  const runs = await listCheckRunsForRef(octokit, owner, repo, ref, checkName);
-
-  const orphans = runs.filter((run) => run.status !== 'completed' && run.id < publishedCheckRunId);
-
-  let closed = 0;
-  for (const run of orphans) {
-    try {
-      await octokit.checks.update({
-        owner,
-        repo,
-        check_run_id: run.id,
-        status: 'completed',
-        conclusion: 'neutral',
-        completed_at: new Date().toISOString(),
-        details_url: detailsUrl,
-        output: {
-          title: 'Hot Cluster E2E: superseded',
-          summary: `This check-run was superseded by a newer "Run Gating Tests" result -- see ${detailsUrl}.`,
-        },
-      });
-      closed++;
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      console.warn(`Could not close orphaned check-run ${run.id}: ${msg}`);
-    }
-  }
-
-  return closed;
 };

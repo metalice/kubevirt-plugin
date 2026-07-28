@@ -7,7 +7,9 @@ import { appendFileSync } from 'node:fs';
  */
 export const setOutput = (key: string, value: string): void => {
   const file = process.env.GITHUB_OUTPUT;
-  if (!file) throw new Error('GITHUB_OUTPUT is not set');
+  if (!file) {
+    throw new Error('GITHUB_OUTPUT is not set');
+  }
 
   if (value.includes('\n')) {
     const delim = `ghadelim_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
@@ -23,7 +25,9 @@ export const setOutput = (key: string, value: string): void => {
  */
 export const addStepSummary = (markdown: string): void => {
   const file = process.env.GITHUB_STEP_SUMMARY;
-  if (!file) return;
+  if (!file) {
+    return;
+  }
   appendFileSync(file, `${markdown}\n`);
 };
 

@@ -17,7 +17,7 @@ const exec = (cmd: string): string => {
   }
 };
 
-const main = (): void => {
+const main = async (): Promise<void> => {
   const clusterName = requireEnv('CLUSTER_NAME');
   const zone = requireEnv('ZONE');
   const installDir = requireEnv('INSTALL_DIR');
@@ -34,8 +34,10 @@ const main = (): void => {
     return;
   }
 
-  const lbs: Array<{ name: string; id: string }> = JSON.parse(lbsJson);
-  const match = lbs.find((lb) => lb.name.includes(infraId) && lb.name.startsWith('kube-'));
+  const lbs = JSON.parse(lbsJson) as Array<{ id: string; name: string }>;
+  const match = lbs.find(
+    (loadBalancer) => loadBalancer.name.includes(infraId) && loadBalancer.name.startsWith('kube-'),
+  );
 
   if (!match) {
     console.log(`::warning::Could not find ingress LB for cluster '${clusterName}'`);
@@ -48,8 +50,10 @@ const main = (): void => {
     return;
   }
 
-  const lbDetail = JSON.parse(lbDetailJson);
-  const sgId: string = lbDetail.security_groups?.[0]?.id ?? '';
+  const lbDetail = JSON.parse(lbDetailJson) as {
+    security_groups?: Array<{ id?: string }>;
+  };
+  const sgId = lbDetail.security_groups?.[0]?.id ?? '';
 
   if (!sgId) {
     console.log('::warning::Could not find security group for ingress LB');
@@ -71,4 +75,7 @@ const main = (): void => {
   console.log('Ingress LB security group updated for public access.');
 };
 
-main();
+void main().catch((err) => {
+  console.error(`::error::${err instanceof Error ? err.message : err}`);
+  process.exit(1);
+});

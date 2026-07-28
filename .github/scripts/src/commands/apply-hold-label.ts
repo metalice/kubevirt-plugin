@@ -7,12 +7,14 @@
 
 import { Octokit } from '@octokit/rest';
 
-import { requireEnv } from '../utils';
-import { getRepoContext } from '../shared/actions-context';
 import { addLabel } from '../github-comments';
+import { requireEnv } from '../utils';
+
+import { getRepoContext } from '../shared/actions-context';
+import { failStep } from '../shared/output';
 
 const main = async (): Promise<void> => {
-  const token = process.env.BOT_TOKEN || requireEnv('GITHUB_TOKEN');
+  const token = process.env.BOT_TOKEN ?? requireEnv('GITHUB_TOKEN');
   const { owner, repo } = getRepoContext();
   const prNumber = Number(requireEnv('PR_NUMBER'));
   const octokit = new Octokit({ auth: token });
@@ -23,11 +25,9 @@ const main = async (): Promise<void> => {
   });
 };
 
-main().catch((err) => {
-  console.error(
-    '::warning::Could not apply the e2e-hold label:',
-    err instanceof Error ? err.message : err,
+void main().catch((err) => {
+  console.warn(
+    `::warning::Could not apply the e2e-hold label: ${err instanceof Error ? err.message : err}`,
   );
-  console.error('::error::Failed to apply e2e-hold label');
-  process.exit(1);
+  failStep('Failed to apply e2e-hold label');
 });

@@ -8,6 +8,7 @@
 import { Octokit } from '@octokit/rest';
 
 import { requireEnv } from '../utils';
+
 import { getRepoContext } from '../shared/actions-context';
 import { failStep } from '../shared/output';
 
@@ -22,22 +23,22 @@ const main = async (): Promise<void> => {
   const [inProgressRuns, queuedRuns] = await Promise.all([
     octokit.paginate(octokit.actions.listWorkflowRuns, {
       owner,
-      repo,
-      workflow_id: 'hot-cluster-e2e.yml',
-      status: 'in_progress' as const,
       per_page: 100,
+      repo,
+      status: 'in_progress' as const,
+      workflow_id: 'hot-cluster-e2e.yml',
     }),
     octokit.paginate(octokit.actions.listWorkflowRuns, {
       owner,
-      repo,
-      workflow_id: 'hot-cluster-e2e.yml',
-      status: 'queued' as const,
       per_page: 100,
+      repo,
+      status: 'queued' as const,
+      workflow_id: 'hot-cluster-e2e.yml',
     }),
   ]);
 
-  const active = [...inProgressRuns, ...queuedRuns].filter((r) =>
-    r.display_title?.includes(`@ PR#${prNumber} retest`),
+  const active = [...inProgressRuns, ...queuedRuns].filter((run) =>
+    run.display_title?.includes(`@ PR#${prNumber} retest`),
   );
 
   if (active.length === 0) {
@@ -56,6 +57,6 @@ const main = async (): Promise<void> => {
   }
 };
 
-main().catch((err) => {
+void main().catch((err) => {
   failStep(err instanceof Error ? err.message : String(err));
 });

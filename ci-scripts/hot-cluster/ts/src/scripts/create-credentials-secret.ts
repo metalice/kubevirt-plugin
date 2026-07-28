@@ -7,11 +7,11 @@
  */
 
 import { execSync } from 'node:child_process';
-import { appendFileSync } from 'node:fs';
 
 import { requireEnv } from '../kube-client';
+import { setOutput } from '../utils';
 
-const main = (): void => {
+const main = async (): Promise<void> => {
   requireEnv('SECRET_NAME');
   requireEnv('CI_ENV_NS');
   requireEnv('MANUAL_CONSOLE_PASSWORD');
@@ -24,7 +24,10 @@ const main = (): void => {
     { stdio: 'inherit' },
   );
 
-  appendFileSync(process.env.GITHUB_OUTPUT!, `name=${process.env.SECRET_NAME}\n`);
+  setOutput('name', process.env.SECRET_NAME ?? '');
 };
 
-main();
+void main().catch((err) => {
+  console.error(`::error::${err instanceof Error ? err.message : err}`);
+  process.exit(1);
+});

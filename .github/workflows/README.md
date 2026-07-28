@@ -28,7 +28,7 @@ Index of workflows in this directory. Deep design notes (check-run model, merge 
 | `needs-rebase.yml`            | PR events                     | Sync `needs-rebase` from GitHub `mergeable`                                                                                            |
 | `pr-label-sync.yml`           | labeled / unlabeled           | Verify merge-pool labels trust; retest if newly pool-eligible                                                                          |
 
-Pool eligibility (`isMergePoolPr`): `lgtm` + `approved`, and no blockers (`hold`, `e2e-hold`, `needs-rebase`, any `do-not-merge/*`). Label names: [`ci-scripts/hot-cluster/js/merge-pool-labels.cjs`](../../ci-scripts/hot-cluster/js/merge-pool-labels.cjs).
+Pool eligibility (`isMergePoolPr`): `lgtm` + `approved`, and no blockers (`hold`, `e2e-hold`, `needs-rebase`, any `do-not-merge/*`). Label names: [`.github/scripts/src/shared/merge-pool.ts`](../scripts/src/shared/merge-pool.ts).
 
 `/hold` blocks merge; `/hold-e2e` only pauses Hot Cluster E2E (different label: `do-not-merge/hold` vs `e2e-hold`).
 

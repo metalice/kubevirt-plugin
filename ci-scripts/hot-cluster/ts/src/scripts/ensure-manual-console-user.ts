@@ -12,7 +12,7 @@
  */
 
 import { execSync } from 'node:child_process';
-import { readFileSync, writeFileSync, unlinkSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -46,12 +46,15 @@ const main = async (): Promise<void> => {
         })
         .join('\n');
 
-      execSync(
-        `oc create secret generic htpass-secret --from-literal=htpasswd='${updated}' -n openshift-config --dry-run=client -o yaml | oc apply -f -`,
-        { stdio: 'inherit' },
+      const secretYaml = execSync(
+        'oc create secret generic htpass-secret --from-file=htpasswd=/dev/stdin -n openshift-config --dry-run=client -o yaml',
+        { encoding: 'utf8', input: updated },
       );
+      execSync('oc apply -f -', { input: secretYaml, stdio: ['pipe', 'inherit', 'inherit'] });
     } catch (err) {
-      if ((err as { statusCode?: number }).statusCode !== 404) throw err;
+      if ((err as { statusCode?: number }).statusCode !== 404) {
+        throw err;
+      }
       console.log('htpass-secret not found; nothing to remove.');
     }
 
@@ -77,20 +80,22 @@ const main = async (): Promise<void> => {
   console.log(`Ensuring htpasswd user '${username}'...`);
 
   // Get existing htpasswd data
-  let existingHtpasswd = '';
-  try {
-    const { data } = await coreApi.readNamespacedSecret({
-      name: 'htpass-secret',
-      namespace: 'openshift-config',
-    });
-    existingHtpasswd = Buffer.from(data?.['htpasswd'] ?? '', 'base64').toString('utf8');
-  } catch {
-    /* doesn't exist yet */
-  }
+  const existingHtpasswd = await (async (): Promise<string> => {
+    try {
+      const { data } = await coreApi.readNamespacedSecret({
+        name: 'htpass-secret',
+        namespace: 'openshift-config',
+      });
+      return Buffer.from(data?.['htpasswd'] ?? '', 'base64').toString('utf8');
+    } catch {
+      return '';
+    }
+  })();
 
   // Generate new hash using htpasswd binary
-  const newHash = execSync(`printf '%s' '${password}' | htpasswd -niB '${username}'`, {
+  const newHash = execSync(`htpasswd -niB '${username}'`, {
     encoding: 'utf8',
+    input: password,
   }).trim();
 
   // Update: remove existing entry for this user, append new hash
@@ -104,21 +109,23 @@ const main = async (): Promise<void> => {
     .filter(Boolean)
     .join('\n');
 
-  execSync(
-    `oc create secret generic htpass-secret --from-literal=htpasswd='${updated}' -n openshift-config --dry-run=client -o yaml | oc apply -f -`,
-    { stdio: 'inherit' },
+  const secretYaml = execSync(
+    'oc create secret generic htpass-secret --from-file=htpasswd=/dev/stdin -n openshift-config --dry-run=client -o yaml',
+    { encoding: 'utf8', input: updated },
   );
+  execSync('oc apply -f -', { input: secretYaml, stdio: ['pipe', 'inherit', 'inherit'] });
 
   // Check if htpasswd IDP exists
-  let hasHtpasswdIdp = '';
-  try {
-    hasHtpasswdIdp = execSync(
-      'oc get oauth cluster -o jsonpath=\'{.spec.identityProviders[?(@.type=="HTPasswd")].name}\'',
-      { encoding: 'utf8' },
-    ).trim();
-  } catch {
-    /* no IDP yet */
-  }
+  const hasHtpasswdIdp = ((): string => {
+    try {
+      return execSync(
+        'oc get oauth cluster -o jsonpath=\'{.spec.identityProviders[?(@.type=="HTPasswd")].name}\'',
+        { encoding: 'utf8' },
+      ).trim();
+    } catch {
+      return '';
+    }
+  })();
 
   if (!hasHtpasswdIdp) {
     console.log('Adding htpasswd identity provider to cluster OAuth config...');
@@ -159,7 +166,7 @@ const main = async (): Promise<void> => {
   console.log(`CA_CERT_FILE=${caCertFile}`);
 };
 
-main().catch((err) => {
+void main().catch((err) => {
   console.error(`::error::${err instanceof Error ? err.message : err}`);
   process.exit(1);
 });

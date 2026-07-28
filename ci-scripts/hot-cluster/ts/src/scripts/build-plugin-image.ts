@@ -7,39 +7,40 @@
  */
 
 import { execSync } from 'node:child_process';
-import { appendFileSync, readFileSync, unlinkSync } from 'node:fs';
+import { readFileSync, unlinkSync } from 'node:fs';
 
 import { requireEnv } from '../kube-client';
+import { setOutput } from '../utils';
 
-const main = (): void => {
+const main = async (): Promise<void> => {
   const instanceKey = requireEnv('INSTANCE_KEY');
   const manualConsoleNs = requireEnv('MANUAL_CONSOLE_NS');
   const workspace = requireEnv('GITHUB_WORKSPACE');
 
   const env: NodeJS.ProcessEnv = {
     ...process.env,
-    NS: manualConsoleNs,
-    IMAGE_NAME: `kubevirt-plugin-${instanceKey}`,
     BUILD_DIR: `${workspace}/plugin-src`,
+    IMAGE_NAME: `kubevirt-plugin-${instanceKey}`,
+    NS: manualConsoleNs,
   };
 
   const outputFile = execSync('mktemp', { encoding: 'utf8' }).trim();
 
   try {
     execSync(`bash ci-scripts/manual-console/images/setup-plugin-image.sh | tee "${outputFile}"`, {
-      stdio: 'inherit',
-      env,
       cwd: workspace,
+      env,
+      stdio: 'inherit',
     });
 
     const content = readFileSync(outputFile, 'utf8');
-    const match = content.match(/^IMAGE_REF=(.+)$/m);
+    const match = /^IMAGE_REF=(.+)$/m.exec(content);
     if (!match?.[1]) {
       console.error('::error::setup-plugin-image.sh did not output IMAGE_REF=');
       process.exit(1);
     }
 
-    appendFileSync(process.env.GITHUB_OUTPUT!, `image=${match[1]}\n`);
+    setOutput('image', match[1]);
   } finally {
     try {
       unlinkSync(outputFile);
@@ -49,4 +50,7 @@ const main = (): void => {
   }
 };
 
-main();
+void main().catch((err) => {
+  console.error(`::error::${err instanceof Error ? err.message : err}`);
+  process.exit(1);
+});

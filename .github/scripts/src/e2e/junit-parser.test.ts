@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { parseJUnitXml, formatFailureSummary } from './junit-parser';
+import { formatFailureSummary, parseJUnitXml } from './junit-parser';
 
 const PASSING_XML = `<?xml version="1.0" encoding="UTF-8"?>
 <testsuites id="" name="" tests="3" failures="0" skipped="0" errors="0" time="10.5">
@@ -60,7 +60,7 @@ describe('parseJUnitXml', () => {
 
 describe('formatFailureSummary', () => {
   it('returns empty string for no failures', () => {
-    const summary = { total: 3, failed: 0, passed: 3, skipped: 0, failures: [] };
+    const summary = { failed: 0, failures: [], passed: 3, skipped: 0, total: 3 };
     assert.equal(formatFailureSummary(summary), '');
   });
 
@@ -76,14 +76,14 @@ describe('formatFailureSummary', () => {
 
   it('escapes pipe characters in test names', () => {
     const summary = {
-      total: 1,
       failed: 1,
+      failures: [{ message: 'msg|here', name: 'test|with|pipes', suite: 'a' }],
       passed: 0,
       skipped: 0,
-      failures: [{ name: 'test|with|pipes', suite: 'a', message: 'msg|here' }],
+      total: 1,
     };
-    const md = formatFailureSummary(summary);
-    assert.ok(!md.includes('test|with'));
-    assert.match(md, /test\\|with\\|pipes/);
+    const markdown = formatFailureSummary(summary);
+    assert.ok(!markdown.includes('test|with'));
+    assert.match(markdown, /test\\|with\\|pipes/);
   });
 });

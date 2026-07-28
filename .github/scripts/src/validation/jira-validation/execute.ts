@@ -1,31 +1,31 @@
-/* eslint-disable no-console */
 import type { Octokit } from '@octokit/rest';
 
-import { JiraClient } from '../../jira-client';
-import { createOctokit, createStatusOctokit, getReleaseBranches } from '../../github-repo';
 import { hasLabel, reportValidation } from '../../github-comments';
+import { createOctokit, createStatusOctokit, getReleaseBranches } from '../../github-repo';
+import { JiraClient } from '../../jira-client';
+import type { GitHubConfig, ValidationCheck } from '../../types/index';
+import { JIRA_BASE_URL, SKIP_LABEL } from '../../types/index';
+import { safeErrorMessage } from '../../utils';
+import { getExpectedVersionForBranch } from '../../version-compare';
+import { extractTicketIds } from '../../version-parse';
 import { HandledValidationError } from '../pr-path-validation/errors';
 import { isLabelAppliedByTrustedActor } from '../pr-path-validation/owners';
-import { extractTicketIds, getExpectedVersionForBranch } from '../../version-utils';
-import { validateTicket, formatValidationComment } from './validation-checks';
-import { safeErrorMessage } from '../../utils';
-import { JIRA_BASE_URL, SKIP_LABEL } from '../../types/index';
-import type { GitHubConfig, JiraIssue, ValidationCheck } from '../../types/index';
+import { formatValidationComment, validateTicket } from './validation-checks';
 
 export type JiraValidationInput = {
   baseBranch: string;
   config: GitHubConfig;
   headSha?: string;
-  prNumber: number;
-  prTitle: string;
   /** Injectable for tests; default to real Octokit clients built from config. */
   octokit?: Octokit;
+  prNumber: number;
+  prTitle: string;
   statusOctokit?: Octokit;
 };
 
 /** Validate Jira tickets referenced in a pull request title. */
 export const executeJiraValidation = async (input: JiraValidationInput): Promise<void> => {
-  const { config, prNumber, prTitle, baseBranch } = input;
+  const { baseBranch, config, prNumber, prTitle } = input;
   const octokit = input.octokit ?? createOctokit(config);
   const statusOctokit = input.statusOctokit ?? createStatusOctokit(config);
 
@@ -86,36 +86,34 @@ export const executeJiraValidation = async (input: JiraValidationInput): Promise
 
   const jira = new JiraClient({
     baseUrl: JIRA_BASE_URL,
-    token: process.env.JIRA_TOKEN,
     projectKey: 'CNV',
+    token: process.env.JIRA_TOKEN,
   });
 
   const allChecks = new Map<string, ValidationCheck[]>();
-  let allPassed = true;
 
   for (const ticketKey of ticketIds) {
-    let issue: JiraIssue;
-    try {
-      issue = await jira.getIssue(ticketKey);
-    } catch (err) {
+    const issue = await jira.getIssue(ticketKey).catch((err) => {
       allChecks.set(ticketKey, [
         {
+          message: `Could not fetch ticket: ${safeErrorMessage(err)}`,
           name: 'Ticket Exists',
           passed: false,
-          message: `Could not fetch ticket: ${safeErrorMessage(err)}`,
         },
       ]);
-      allPassed = false;
+      return null;
+    });
+    if (!issue) {
       continue;
     }
 
     const checks = await validateTicket(jira, issue, expectedVersion, baseBranch);
     allChecks.set(ticketKey, checks);
-
-    if (checks.some((c) => !c.passed)) {
-      allPassed = false;
-    }
   }
+
+  const allPassed = [...allChecks.values()].every((checks) =>
+    checks.every((check) => check.passed),
+  );
 
   const commentBody = formatValidationComment(ticketIds, allChecks, allPassed);
   await reportValidation(octokit, config.owner, config.repo, prNumber, allPassed, commentBody);

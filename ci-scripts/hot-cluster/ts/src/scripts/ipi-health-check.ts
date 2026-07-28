@@ -17,16 +17,19 @@ const main = async (): Promise<void> => {
 
   console.log(`Probing IPI cluster via DNS: ${apiHost}...`);
 
-  let apiIp: string;
-  try {
-    const addresses = await dns.resolve4(apiHost);
-    if (addresses.length === 0) throw new Error('empty response');
-    apiIp = addresses[0];
-    console.log(`API DNS resolves — cluster is alive`);
-    console.log(`  ${apiHost} -> ${apiIp}`);
-  } catch {
-    throw new Error(`API DNS does not resolve for ${apiHost}. Cluster may not exist.`);
-  }
+  const apiIp = await (async (): Promise<string> => {
+    try {
+      const addresses = await dns.resolve4(apiHost);
+      if (addresses.length === 0) {
+        throw new Error('empty response');
+      }
+      return addresses[0];
+    } catch {
+      throw new Error(`API DNS does not resolve for ${apiHost}. Cluster may not exist.`);
+    }
+  })();
+  console.log(`API DNS resolves — cluster is alive`);
+  console.log(`  ${apiHost} -> ${apiIp}`);
 
   console.log('Checking API reachability (HTTPS)...');
   try {
@@ -45,7 +48,7 @@ const main = async (): Promise<void> => {
   }
 };
 
-main().catch((err) => {
+void main().catch((err) => {
   console.error(`::error::${err instanceof Error ? err.message : err}`);
   process.exit(1);
 });

@@ -1,10 +1,9 @@
-/* eslint-disable no-console */
-import { isApprovalAuthError } from './approve';
+import type { GitHubConfig } from '../../types/index';
+import { safeErrorMessage } from '../../utils';
 import { HandledValidationError } from '../pr-path-validation/errors';
 import { reportAiConfigError, reportCiScriptsError } from '../pr-path-validation/execute';
-import { safeErrorMessage } from '../../utils';
+import { isApprovalAuthError } from './approve';
 import type { ValidationCommand } from './parse-command';
-import type { GitHubConfig } from '../../types/index';
 
 export type CommandOutcome = { command: ValidationCommand; error?: unknown };
 export type CommandHandlers = Record<ValidationCommand, () => Promise<void>>;

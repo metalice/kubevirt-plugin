@@ -8,6 +8,7 @@
 import { Octokit } from '@octokit/rest';
 
 import { requireEnv } from '../utils';
+
 import { getRepoContext } from '../shared/actions-context';
 import { dispatchWorkflow } from '../shared/dispatch';
 import { failStep } from '../shared/output';
@@ -20,20 +21,20 @@ const main = async (): Promise<void> => {
   const octokit = new Octokit({ auth: token });
 
   await dispatchWorkflow(octokit, {
-    owner,
-    repo,
-    workflowId: 'hot-cluster-e2e.yml',
-    ref: 'main',
     inputs: {
-      pr_number: prNumber,
       base_ref: baseRef,
+      pr_number: prNumber,
       skip_pool_check: 'true',
     },
+    owner,
+    ref: 'main',
+    repo,
+    workflowId: 'hot-cluster-e2e.yml',
   });
 
   console.log(`Dispatched hot-cluster-e2e.yml for PR #${prNumber} (base: ${baseRef})`);
 };
 
-main().catch((err) => {
+void main().catch((err) => {
   failStep(err instanceof Error ? err.message : String(err));
 });

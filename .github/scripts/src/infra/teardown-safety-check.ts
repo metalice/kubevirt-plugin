@@ -8,6 +8,7 @@
 import { Octokit } from '@octokit/rest';
 
 import { requireEnv } from '../utils';
+
 import { getRepoContext } from '../shared/actions-context';
 import { failStep } from '../shared/output';
 import { hasActiveWorkflows } from './check-ci-activity';
@@ -28,6 +29,6 @@ const main = async (): Promise<void> => {
   }
 };
 
-main().catch((err) => {
+void main().catch((err) => {
   failStep(err instanceof Error ? err.message : String(err));
 });

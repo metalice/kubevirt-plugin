@@ -12,36 +12,40 @@ const log = (msg: string): void => {
 };
 
 export const reapStale = async (
-  kc: k8s.KubeConfig,
+  kubeConfig: k8s.KubeConfig,
   config: ControllerConfig,
   teardownFn: (kc: k8s.KubeConfig, config: ControllerConfig, cm: k8s.V1ConfigMap) => Promise<void>,
 ): Promise<void> => {
-  const coreApi = kc.makeApiClient(k8s.CoreV1Api);
+  const coreApi = kubeConfig.makeApiClient(k8s.CoreV1Api);
   const nowEpoch = Date.now() / 1000;
 
   const { items: cms } = await coreApi.listNamespacedConfigMap({
-    namespace: config.ciEnvNs,
     labelSelector: config.ciEnvLabel,
+    namespace: config.ciEnvNs,
   });
 
-  for (const cm of cms) {
-    const data = (cm.data ?? {}) as unknown as CiEnvData;
+  for (const configMap of cms) {
+    const data = (configMap.data ?? {}) as unknown as CiEnvData;
     const desired = data['desired-state'] ?? '';
     const status = data.status ?? '';
 
-    if (desired !== 'present' || status === 'cleaning' || status === 'cleaned') continue;
+    if (desired !== 'present' || status === 'cleaning' || status === 'cleaned') {
+      continue;
+    }
 
-    const createdTs = cm.metadata?.creationTimestamp;
-    if (!createdTs) continue;
+    const createdTs = configMap.metadata?.creationTimestamp;
+    if (!createdTs) {
+      continue;
+    }
 
     const createdEpoch = new Date(createdTs).getTime() / 1000;
     const age = nowEpoch - createdEpoch;
 
     if (age > config.ttlSeconds) {
       log(
-        `REAPER: ConfigMap ${cm.metadata?.name} is ${Math.round(age)}s old (TTL=${config.ttlSeconds}s), forcing cleanup`,
+        `REAPER: ConfigMap ${configMap.metadata?.name} is ${Math.round(age)}s old (TTL=${config.ttlSeconds}s), forcing cleanup`,
       );
-      await teardownFn(kc, config, cm);
+      await teardownFn(kubeConfig, config, configMap);
     }
   }
 };

@@ -1,30 +1,30 @@
 import type { Octokit } from '@octokit/rest';
 
-import { syncValidationLabels } from './label-sync';
-import type { LabelSyncContext, PathValidationEvent } from './label-sync';
-import { isLabelAppliedByTrustedActor } from './owners';
-import { getSensitivePaths } from './paths';
 import { getPrLabelNames, removeLabel } from '../../github-comments';
 import { getPullRequestFiles } from '../../github-repo';
 import type { GitHubConfig } from '../../types/index';
+import type { LabelSyncContext, PathValidationEvent } from './label-sync';
+import { syncValidationLabels } from './label-sync';
+import { isLabelAppliedByTrustedActor } from './owners';
+import { getSensitivePaths } from './paths';
 import type { PathValidationConfig } from './types';
 
 export type PathValidationContext = {
-  octokit: Octokit;
-  statusOctokit?: Octokit;
-  config: GitHubConfig;
-  prNumber: number;
-  headSha?: string;
-  event: PathValidationEvent;
   /** Needed to verify the skip label's applier against OWNERS at the PR's real target branch -- never the PR's own branch. */
   baseBranch: string;
+  config: GitHubConfig;
+  event: PathValidationEvent;
   /** Pre-fetched changed files -- skips the internal getPullRequestFiles call so callers running multiple path validations for the same PR can share one fetch. */
   files?: Array<{ filename: string; patch?: string }>;
+  headSha?: string;
+  octokit: Octokit;
+  prNumber: number;
+  statusOctokit?: Octokit;
 };
 
 export type PathValidationOutcome =
-  | { kind: 'skipped' }
-  | { kind: 'passed' | 'failed'; sensitivePaths: string[] };
+  | { kind: 'failed' | 'passed'; sensitivePaths: string[] }
+  | { kind: 'skipped' };
 
 export type BuildStatusDescription = (passed: boolean, hasSensitiveChanges: boolean) => string;
 
@@ -42,8 +42,8 @@ export const runPathValidation = async (
   onFilesFetched?: (files: Array<{ filename: string; patch?: string }>) => void,
 ): Promise<PathValidationOutcome> => {
   const labelCtx: LabelSyncContext = {
-    octokit: ctx.octokit,
     config: ctx.config,
+    octokit: ctx.octokit,
     prNumber: ctx.prNumber,
   };
 

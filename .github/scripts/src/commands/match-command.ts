@@ -8,7 +8,8 @@
  */
 
 import { requireEnv } from '../utils';
-import { setOutput, failStep } from '../shared/output';
+
+import { failStep, setOutput } from '../shared/output';
 
 const main = (): void => {
   const body = process.env.COMMENT_BODY ?? '';

@@ -11,14 +11,14 @@ export type HyperConverged = {
   spec: Record<string, unknown>;
   status?: {
     conditions?: Array<{
-      type: string;
-      status: string;
-      reason?: string;
-      message?: string;
       lastTransitionTime?: string;
+      message?: string;
+      reason?: string;
+      status: string;
+      type: string;
     }>;
-    versions?: Array<{ name: string; version: string }>;
     observedGeneration?: number;
+    versions?: Array<{ name: string; version: string }>;
   };
 };
 
@@ -27,9 +27,9 @@ export type KubeVirt = {
   kind: 'KubeVirt';
   metadata: V1ObjectMeta;
   status?: {
+    conditions?: Array<{ status: string; type: string }>;
     observedKubeVirtVersion?: string;
     phase?: string;
-    conditions?: Array<{ type: string; status: string }>;
   };
 };
 
@@ -38,9 +38,9 @@ export type CDI = {
   kind: 'CDI';
   metadata: V1ObjectMeta;
   status?: {
+    conditions?: Array<{ status: string; type: string }>;
     observedVersion?: string;
     phase?: string;
-    conditions?: Array<{ type: string; status: string }>;
   };
 };
 
@@ -49,9 +49,9 @@ export type SSP = {
   kind: 'SSP';
   metadata: V1ObjectMeta;
   status?: {
+    conditions?: Array<{ status: string; type: string }>;
     observedVersion?: string;
     phase?: string;
-    conditions?: Array<{ type: string; status: string }>;
   };
 };
 
@@ -64,7 +64,7 @@ export type HostPathProvisioner = {
     pathConfig?: { path: string; useNamingPrefix?: boolean };
   };
   status?: {
+    conditions?: Array<{ status: string; type: string }>;
     observedVersion?: string;
-    conditions?: Array<{ type: string; status: string }>;
   };
 };

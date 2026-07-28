@@ -5,10 +5,9 @@
  * Required env: IC_API_KEY, INSTALL_DIR
  */
 
+import * as yaml from 'js-yaml';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-
-import * as yaml from 'js-yaml';
 
 import { requireEnv } from '../kube-client';
 
@@ -27,7 +26,7 @@ const SECRET_NAMES = [
   'cloud-credentials',
 ];
 
-const main = (): void => {
+const main = async (): Promise<void> => {
   const apiKey = requireEnv('IC_API_KEY');
   const installDir = requireEnv('INSTALL_DIR');
   const manifestsDir = join(installDir, 'openshift');
@@ -44,13 +43,13 @@ const main = (): void => {
       const filename = `99-${secretName}-${ns}.yaml`;
       const manifest = {
         apiVersion: 'v1',
+        data: {
+          'ibm-credentials.env': credEnv,
+          ibmcloud_api_key: rawKey,
+        },
         kind: 'Secret',
         metadata: { name: secretName, namespace: ns },
         type: 'Opaque',
-        data: {
-          ibmcloud_api_key: rawKey,
-          'ibm-credentials.env': credEnv,
-        },
       };
 
       const yamlStr = yaml.dump(manifest);
@@ -62,4 +61,7 @@ const main = (): void => {
   console.log(`All IBM Cloud credential secrets generated in ${manifestsDir}/`);
 };
 
-main();
+void main().catch((err) => {
+  console.error(`::error::${err instanceof Error ? err.message : err}`);
+  process.exit(1);
+});

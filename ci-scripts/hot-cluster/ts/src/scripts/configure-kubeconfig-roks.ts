@@ -19,7 +19,7 @@ const main = async (): Promise<void> => {
   execSync('oc get nodes -o wide', { stdio: 'inherit' });
 };
 
-main().catch((err) => {
+void main().catch((err) => {
   console.error(`::error::${err instanceof Error ? err.message : err}`);
   process.exit(1);
 });

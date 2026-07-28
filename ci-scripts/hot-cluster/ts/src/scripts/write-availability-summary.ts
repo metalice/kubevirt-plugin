@@ -4,9 +4,8 @@
  * Required env: CLUSTER_NAME, PROBE_READY, PROVISION_RESULT
  */
 
-import { appendFileSync } from 'node:fs';
-
 import { requireEnv } from '../kube-client';
+import { addStepSummary } from '../utils';
 
 const main = async (): Promise<void> => {
   const clusterName = requireEnv('CLUSTER_NAME');
@@ -26,12 +25,12 @@ const main = async (): Promise<void> => {
     lines.push(`| Provision Job | \`${provisionResult}\` |`);
   }
 
-  const summary = lines.join('\n') + '\n';
+  const summary = lines.join('\n');
   console.log(summary);
-  appendFileSync(process.env.GITHUB_STEP_SUMMARY!, summary);
+  addStepSummary(summary);
 };
 
-main().catch((err) => {
+void main().catch((err) => {
   console.error(`::error::${err instanceof Error ? err.message : err}`);
   process.exit(1);
 });

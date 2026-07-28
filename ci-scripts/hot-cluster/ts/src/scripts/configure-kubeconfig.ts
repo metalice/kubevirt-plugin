@@ -7,16 +7,16 @@
  *               IC_KEY (for ROKS, via ibm-client)
  */
 
-import { existsSync } from 'node:fs';
-import { appendFileSync } from 'node:fs';
-import { resolve } from 'node:path';
 import { execSync } from 'node:child_process';
 import dns from 'node:dns/promises';
+import { existsSync } from 'node:fs';
+import { appendFileSync } from 'node:fs';
+import { resolve as resolvePath } from 'node:path';
 
 import { requireEnv } from '../kube-client';
-import { getIamBearerToken, IKS_API_BASE } from '../ibm-client';
 
-const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
+const sleep = (delayMs: number): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve, delayMs));
 
 const main = async (): Promise<void> => {
   const infraType = requireEnv('INFRASTRUCTURE_TYPE');
@@ -30,7 +30,7 @@ const main = async (): Promise<void> => {
 
   // Verify cluster connectivity
   console.log('Verifying cluster connectivity...');
-  for (let i = 1; i <= 6; i++) {
+  for (const i of Array.from({ length: 6 }, (_unused, idx) => idx + 1)) {
     try {
       execSync('oc cluster-info', { stdio: 'pipe' });
       break;
@@ -53,8 +53,8 @@ const main = async (): Promise<void> => {
 };
 
 const configureIpi = async (clusterName: string): Promise<void> => {
-  const installDir = resolve(requireEnv('RUNNER_TEMP'), 'ipi-install');
-  const kubeconfigPath = resolve(installDir, 'auth', 'kubeconfig');
+  const installDir = resolvePath(requireEnv('RUNNER_TEMP'), 'ipi-install');
+  const kubeconfigPath = resolvePath(installDir, 'auth', 'kubeconfig');
 
   console.log(`Looking for kubeconfig at ${kubeconfigPath}...`);
 
@@ -73,7 +73,7 @@ const configureIpi = async (clusterName: string): Promise<void> => {
   const apiHost = `api.${clusterName}.${baseDomain}`;
 
   console.log('Waiting for API DNS to resolve (up to 10 minutes)...');
-  for (let i = 1; i <= 20; i++) {
+  for (const i of Array.from({ length: 20 }, (_unused, idx) => idx + 1)) {
     try {
       const addrs = await dns.resolve4(apiHost);
       if (addrs.length > 0) {
@@ -109,7 +109,7 @@ const configureRoks = async (clusterName: string): Promise<void> => {
   });
 };
 
-main().catch((err) => {
+void main().catch((err) => {
   console.error(`::error::${err instanceof Error ? err.message : err}`);
   process.exit(1);
 });

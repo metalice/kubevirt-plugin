@@ -5,7 +5,8 @@
 
 import { KubeClient, withRetry } from '../kube-client';
 
-const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
+const sleep = (delayMs: number): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve, delayMs));
 
 const main = async (): Promise<void> => {
   const client = KubeClient.fromKubeconfig();
@@ -15,9 +16,9 @@ const main = async (): Promise<void> => {
 
   const registry = (await api.getClusterCustomObject({
     group: 'imageregistry.operator.openshift.io',
-    version: 'v1',
-    plural: 'configs',
     name: 'cluster',
+    plural: 'configs',
+    version: 'v1',
   })) as unknown as { spec: { managementState: string; storage?: Record<string, unknown> } };
 
   const mgmtState = registry.spec.managementState;
@@ -27,11 +28,11 @@ const main = async (): Promise<void> => {
     await withRetry(
       () =>
         api.patchClusterCustomObject({
-          group: 'imageregistry.operator.openshift.io',
-          version: 'v1',
-          plural: 'configs',
-          name: 'cluster',
           body: { spec: { managementState: 'Managed', storage: { emptyDir: {} } } },
+          group: 'imageregistry.operator.openshift.io',
+          name: 'cluster',
+          plural: 'configs',
+          version: 'v1',
         }),
       'patch image registry',
     );
@@ -42,11 +43,11 @@ const main = async (): Promise<void> => {
       await withRetry(
         () =>
           api.patchClusterCustomObject({
-            group: 'imageregistry.operator.openshift.io',
-            version: 'v1',
-            plural: 'configs',
-            name: 'cluster',
             body: { spec: { storage: { emptyDir: {} } } },
+            group: 'imageregistry.operator.openshift.io',
+            name: 'cluster',
+            plural: 'configs',
+            version: 'v1',
           }),
         'patch registry storage',
       );
@@ -58,16 +59,18 @@ const main = async (): Promise<void> => {
   }
 
   console.log('Waiting for image-registry operator to be available...');
-  for (let i = 1; i <= 30; i++) {
+  for (const i of Array.from({ length: 30 }, (_unused, idx) => idx + 1)) {
     try {
-      const co = (await api.getClusterCustomObject({
+      const clusterOperator = (await api.getClusterCustomObject({
         group: 'config.openshift.io',
-        version: 'v1',
-        plural: 'clusteroperators',
         name: 'image-registry',
-      })) as unknown as { status?: { conditions?: Array<{ type: string; status: string }> } };
+        plural: 'clusteroperators',
+        version: 'v1',
+      })) as unknown as { status?: { conditions?: Array<{ status: string; type: string }> } };
 
-      const available = co.status?.conditions?.find((c) => c.type === 'Available');
+      const available = clusterOperator.status?.conditions?.find(
+        (condition) => condition.type === 'Available',
+      );
       if (available?.status === 'True') {
         console.log('Image registry is Available.');
         return;
@@ -83,7 +86,7 @@ const main = async (): Promise<void> => {
   console.warn('Image registry did not become Available within timeout.');
 };
 
-main().catch((err) => {
+void main().catch((err) => {
   console.error(`::error::${err instanceof Error ? err.message : err}`);
   process.exit(1);
 });

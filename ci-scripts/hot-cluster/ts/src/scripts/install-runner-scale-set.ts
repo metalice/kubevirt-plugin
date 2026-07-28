@@ -37,7 +37,9 @@ const main = async (): Promise<void> => {
   try {
     await client.coreV1.createNamespace({ body: { metadata: { name: runnersNs } } });
   } catch (err) {
-    if ((err as { statusCode?: number }).statusCode !== 409) throw err;
+    if ((err as { statusCode?: number }).statusCode !== 409) {
+      throw err;
+    }
   }
 
   // Build auth args
@@ -109,8 +111,7 @@ const main = async (): Promise<void> => {
   if (process.env.SKIP_ARC_RUNNER_RBAC !== '1') {
     const rbacManifest = resolve(arcDir, 'arc-runner-rbac.yaml');
     console.log(`Applying runner CI RBAC...`);
-    let rbacYaml = readFileSync(rbacManifest, 'utf8');
-    rbacYaml = rbacYaml
+    const rbacYaml = readFileSync(rbacManifest, 'utf8')
       .replace(/name: kubevirt-plugin-ci-gha-rs-no-permission$/, `name: ${runnerSa}`)
       .replace(/namespace: arc-runners$/, `namespace: ${runnersNs}`);
     execSync(`echo '${rbacYaml}' | oc apply -f -`, { stdio: 'inherit' });
@@ -120,7 +121,7 @@ const main = async (): Promise<void> => {
   console.log(`  runs-on: ${scaleSetName}`);
 };
 
-main().catch((err) => {
+void main().catch((err) => {
   console.error(`::error::${err instanceof Error ? err.message : err}`);
   process.exit(1);
 });

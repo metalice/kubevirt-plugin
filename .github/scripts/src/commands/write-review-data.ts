@@ -10,15 +10,16 @@
 import { writeFileSync } from 'node:fs';
 
 import { requireEnv } from '../utils';
+
 import { failStep } from '../shared/output';
 
 const main = (): void => {
   const data = {
-    prNumber: Number(requireEnv('PR_NUMBER')),
-    reviewState: requireEnv('REVIEW_STATE'),
-    reviewAuthor: requireEnv('REVIEW_AUTHOR'),
-    prAuthor: requireEnv('PR_AUTHOR'),
     baseBranch: requireEnv('BASE_BRANCH'),
+    prAuthor: requireEnv('PR_AUTHOR'),
+    prNumber: Number(requireEnv('PR_NUMBER')),
+    reviewAuthor: requireEnv('REVIEW_AUTHOR'),
+    reviewState: requireEnv('REVIEW_STATE'),
   };
 
   writeFileSync('review-data.json', JSON.stringify(data));

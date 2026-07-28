@@ -12,9 +12,10 @@
 import { Octokit } from '@octokit/rest';
 
 import { requireEnv } from '../utils';
+
 import { getRepoContext } from '../shared/actions-context';
+import { failStep, setOutput } from '../shared/output';
 import { isListedInLocalOwners } from '../shared/owners';
-import { setOutput, failStep } from '../shared/output';
 
 const main = async (): Promise<void> => {
   const octokit = new Octokit({ auth: requireEnv('GITHUB_TOKEN') });
@@ -26,11 +27,13 @@ const main = async (): Promise<void> => {
     failStep(`pr-number must be a positive integer, got '${prNumberRaw}'`);
   }
 
-  const { data: pr } = await octokit.pulls.get({ owner, repo, pull_number: prNumber });
+  const { data: pullRequest } = await octokit.pulls.get({ owner, pull_number: prNumber, repo });
 
-  const author = pr.user!.login;
-  const headSha = pr.head.sha;
-  const headRepo = pr.head.repo ? pr.head.repo.full_name : '(source repository deleted)';
+  const author = pullRequest.user?.login ?? '';
+  const headSha = pullRequest.head.sha;
+  const headRepo = pullRequest.head.repo
+    ? pullRequest.head.repo.full_name
+    : '(source repository deleted)';
 
   console.log(`PR #${prNumber}: author=${author}, head=${headRepo}@${headSha}`);
 
@@ -51,6 +54,6 @@ const main = async (): Promise<void> => {
   }
 };
 
-main().catch((err) => {
+void main().catch((err) => {
   failStep(err instanceof Error ? err.message : String(err));
 });

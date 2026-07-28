@@ -9,38 +9,45 @@
 import { Octokit } from '@octokit/rest';
 
 import { requireEnv } from '../utils';
+
 import { getRepoContext } from '../shared/actions-context';
-import { setOutput, failStep } from '../shared/output';
+import { failStep, setOutput } from '../shared/output';
 
 const main = async (): Promise<void> => {
   const token = requireEnv('GITHUB_TOKEN');
   const { owner, repo } = getRepoContext();
   const clusterName = requireEnv('CLUSTER_NAME');
-  let lastRunTime = process.env.LAST_RUN_TIME ?? '';
   const threshold = parseInt(requireEnv('IDLE_THRESHOLD_MINUTES'), 10);
   const octokit = new Octokit({ auth: token });
 
-  if (!lastRunTime) {
-    console.log('No completed tagged CI runs found, checking cluster setup time as fallback...');
+  const lastRunTime: string = await (async (): Promise<string> => {
+    const envValue = process.env.LAST_RUN_TIME ?? '';
+    if (envValue) {
+      return envValue;
+    }
 
+    console.log('No completed tagged CI runs found, checking cluster setup time as fallback...');
     try {
       const { data } = await octokit.actions.listWorkflowRuns({
         owner,
-        repo,
-        workflow_id: 'ibmc-cluster-setup.yml',
-        status: 'success',
         per_page: 10,
+        repo,
+        status: 'success',
+        workflow_id: 'ibmc-cluster-setup.yml',
       });
-      const match = data.workflow_runs.find((r) => r.display_title?.includes(`[${clusterName}]`));
+      const match = data.workflow_runs.find((run) =>
+        run.display_title?.includes(`[${clusterName}]`),
+      );
       if (match) {
-        lastRunTime = match.updated_at;
-        console.log(`Using last successful setup run time for ${clusterName}: ${lastRunTime}`);
+        console.log(`Using last successful setup run time for ${clusterName}: ${match.updated_at}`);
+        return match.updated_at;
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.warn(`Failed to query setup runs: ${msg}`);
     }
-  }
+    return '';
+  })();
 
   if (!lastRunTime) {
     console.log('Cannot determine last activity time, skipping teardown for safety');
@@ -72,6 +79,6 @@ const main = async (): Promise<void> => {
   }
 };
 
-main().catch((err) => {
+void main().catch((err) => {
   failStep(err instanceof Error ? err.message : String(err));
 });

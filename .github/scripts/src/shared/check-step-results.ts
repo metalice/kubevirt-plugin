@@ -7,6 +7,7 @@
  */
 
 import { requireEnv } from '../utils';
+
 import { failStep } from './output';
 
 const main = (): void => {

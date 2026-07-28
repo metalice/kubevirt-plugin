@@ -9,16 +9,16 @@
  */
 
 import { execSync } from 'node:child_process';
-import { appendFileSync } from 'node:fs';
 
 import { waitForConfigMapStatus } from '../ci-env-poll';
 import { requireEnv } from '../kube-client';
+import { addStepSummary, setOutput } from '../utils';
 
 const cmName = requireEnv('CM_NAME');
 const cmNs = requireEnv('CM_NS');
 const pluginImage = requireEnv('PLUGIN_IMAGE');
 const testNs = requireEnv('TEST_NS');
-const helmRelease = process.env.HELM_RELEASE || cmName;
+const helmRelease = process.env.HELM_RELEASE ?? cmName;
 const htpasswdUser = requireEnv('HTPASSWD_USER');
 const htpasswdSecretName = requireEnv('HTPASSWD_SECRET_NAME');
 const timeout = Number(requireEnv('TIMEOUT'));
@@ -41,7 +41,7 @@ data:
   htpasswd-secret-name: "${htpasswdSecretName}"
 `.trim();
 
-execSync(`echo '${manifest}' | oc apply -f -`, { stdio: 'inherit' });
+execSync('oc apply -f -', { input: manifest, stdio: ['pipe', 'inherit', 'inherit'] });
 console.log(`Created/updated trigger ConfigMap ${cmName} in ${cmNs}`);
 
 execSync(
@@ -52,20 +52,17 @@ console.log('Reset status=pending so ci-env-controller re-provisions on this dis
 
 const main = async (): Promise<void> => {
   const result = await waitForConfigMapStatus({
+    label: 'manual console environment',
     name: cmName,
     namespace: cmNs,
     targetStatus: 'ready',
     timeoutSeconds: timeout,
-    label: 'manual console environment',
   });
 
-  const output = process.env.GITHUB_OUTPUT!;
-  appendFileSync(output, `bridge-base-address=${result.data['bridge-base-address']}\n`);
-  appendFileSync(output, `console-route=${result.data['console-route']}\n`);
+  setOutput('bridge-base-address', result.data['bridge-base-address']);
+  setOutput('console-route', result.data['console-route']);
 
-  const summary = process.env.GITHUB_STEP_SUMMARY!;
-  appendFileSync(
-    summary,
+  addStepSummary(
     [
       '<details><summary>Manual Console Environment</summary>',
       '',
@@ -82,12 +79,11 @@ const main = async (): Promise<void> => {
       `| Console route | \`${result.data['console-route']}\` |`,
       '',
       '</details>',
-      '',
     ].join('\n'),
   );
 };
 
-main().catch((err) => {
+void main().catch((err) => {
   console.error(`::error::${err instanceof Error ? err.message : err}`);
   process.exit(1);
 });

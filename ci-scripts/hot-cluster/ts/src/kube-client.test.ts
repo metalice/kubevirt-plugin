@@ -10,14 +10,19 @@ describe('requireEnv', () => {
   it('returns the value when set', () => {
     process.env[KEY] = 'test-value';
     assert.equal(requireEnv(KEY), 'test-value');
-    if (original === undefined) delete process.env[KEY];
-    else process.env[KEY] = original;
+    if (original === undefined) {
+      delete process.env[KEY];
+    } else {
+      process.env[KEY] = original;
+    }
   });
 
   it('throws when unset', () => {
     delete process.env[KEY];
     assert.throws(() => requireEnv(KEY), /Missing required environment variable/);
-    if (original !== undefined) process.env[KEY] = original;
+    if (original !== undefined) {
+      process.env[KEY] = original;
+    }
   });
 });
 
@@ -28,11 +33,11 @@ describe('withRetry', () => {
   });
 
   it('retries on retryable status codes', async () => {
-    let attempts = 0;
+    const counter = { attempts: 0 };
     const result = await withRetry(
       async () => {
-        attempts++;
-        if (attempts < 3) {
+        counter.attempts++;
+        if (counter.attempts < 3) {
           const err = new Error('conflict') as Error & { statusCode: number };
           err.statusCode = 409;
           throw err;
@@ -43,7 +48,7 @@ describe('withRetry', () => {
       5,
     );
     assert.equal(result, 'ok');
-    assert.equal(attempts, 3);
+    assert.equal(counter.attempts, 3);
   });
 
   it('throws immediately on non-retryable errors', async () => {

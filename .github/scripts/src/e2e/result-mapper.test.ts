@@ -4,10 +4,10 @@ import { describe, it } from 'node:test';
 import { mapResultDetails } from './result-mapper';
 
 const baseParams = {
-  prNumber: '123',
-  mainSha: 'abc123',
-  isPoolRetest: false,
   held: false,
+  isPoolRetest: false,
+  mainSha: 'abc123',
+  prNumber: '123',
   testFailureSummary: '',
   workflowRunUrl: 'https://github.com/org/repo/actions/runs/1',
 };
@@ -21,21 +21,21 @@ describe('mapResultDetails', () => {
   });
 
   it('returns neutral for held', () => {
-    const result = mapResultDetails({ ...baseParams, reason: 'passed', held: true });
+    const result = mapResultDetails({ ...baseParams, held: true, reason: 'passed' });
     assert.equal(result.conclusion, 'neutral');
     assert.match(result.title, /hold-e2e/);
   });
 
   it('held takes priority over any reason', () => {
-    const result = mapResultDetails({ ...baseParams, reason: 'test-failed', held: true });
+    const result = mapResultDetails({ ...baseParams, held: true, reason: 'test-failed' });
     assert.equal(result.conclusion, 'neutral');
   });
 
   it('includes pool retest suffix', () => {
     const result = mapResultDetails({
       ...baseParams,
-      reason: 'passed',
       isPoolRetest: true,
+      reason: 'passed',
     });
     assert.match(result.title, /retest after main advanced/);
   });

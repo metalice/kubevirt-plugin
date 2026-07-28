@@ -8,6 +8,7 @@
 import { Octokit } from '@octokit/rest';
 
 import { requireEnv } from '../utils';
+
 import { getRepoContext } from '../shared/actions-context';
 import { failStep } from '../shared/output';
 import { checkBusyClusters } from './check-ci-activity';
@@ -15,7 +16,7 @@ import { checkBusyClusters } from './check-ci-activity';
 const main = async (): Promise<void> => {
   const token = requireEnv('GITHUB_TOKEN');
   const { owner, repo } = getRepoContext();
-  const clusters: string[] = JSON.parse(process.env.MATCHED_CLUSTERS || '[]');
+  const clusters: string[] = JSON.parse(process.env.MATCHED_CLUSTERS ?? '[]') as string[];
   const octokit = new Octokit({ auth: token });
 
   const busy = await checkBusyClusters(octokit, owner, repo, clusters);
@@ -29,6 +30,6 @@ const main = async (): Promise<void> => {
   }
 };
 
-main().catch((err) => {
+void main().catch((err) => {
   failStep(err instanceof Error ? err.message : String(err));
 });

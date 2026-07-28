@@ -6,7 +6,7 @@
  *      ARC_GITHUB_PAT
  */
 
-const main = (): void => {
+const main = async (): Promise<void> => {
   const hasApp =
     !!process.env.ARC_GITHUB_APP_ID &&
     !!process.env.ARC_GITHUB_APP_INSTALL_ID &&
@@ -30,4 +30,7 @@ const main = (): void => {
   console.log('ARC secrets are present.');
 };
 
-main();
+void main().catch((err) => {
+  console.error(`::error::${err instanceof Error ? err.message : err}`);
+  process.exit(1);
+});

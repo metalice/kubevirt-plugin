@@ -39,9 +39,9 @@ const main = async (): Promise<void> => {
   ].join('\n');
 
   const response = await fetch(webhookUrl, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ text }),
+    headers: { 'Content-Type': 'application/json' },
+    method: 'POST',
   });
 
   if (!response.ok) {
@@ -51,7 +51,7 @@ const main = async (): Promise<void> => {
   console.log('Slack notification sent.');
 };
 
-main().catch((err) => {
+void main().catch((err) => {
   console.error(`::error::${err instanceof Error ? err.message : err}`);
   process.exit(1);
 });

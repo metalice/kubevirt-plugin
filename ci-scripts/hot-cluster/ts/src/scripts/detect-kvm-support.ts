@@ -7,8 +7,8 @@
  * Output: kvm_emulation=true|false
  */
 
-import { appendFileSync } from 'node:fs';
 import { execSync } from 'node:child_process';
+import { appendFileSync } from 'node:fs';
 
 const exec = (cmd: string): string => {
   try {
@@ -20,22 +20,26 @@ const exec = (cmd: string): string => {
 
 const setOutput = (value: string): void => {
   const outputFile = process.env.GITHUB_OUTPUT;
-  if (outputFile) appendFileSync(outputFile, `kvm_emulation=${value}\n`);
+  if (outputFile) {
+    appendFileSync(outputFile, `kvm_emulation=${value}\n`);
+  }
 };
 
-const main = (): void => {
+const main = async (): Promise<void> => {
   const kvmFallback = process.env.KVM_EMULATION_INPUT ?? 'true';
 
   console.log('Checking for /dev/kvm on worker nodes...');
 
-  let workerNode = exec(
+  const initialWorker = exec(
     "oc get nodes --no-headers -l node-role.kubernetes.io/worker 2>/dev/null | head -1 | awk '{print $1}'",
   );
 
-  if (!workerNode) {
+  if (!initialWorker) {
     console.log('No worker nodes found, checking control plane nodes...');
-    workerNode = exec("oc get nodes --no-headers 2>/dev/null | head -1 | awk '{print $1}'");
   }
+
+  const workerNode =
+    initialWorker || exec("oc get nodes --no-headers 2>/dev/null | head -1 | awk '{print $1}'");
 
   if (!workerNode) {
     console.log(
@@ -67,4 +71,7 @@ const main = (): void => {
   setOutput(kvmFallback);
 };
 
-main();
+void main().catch((err) => {
+  console.error(`::error::${err instanceof Error ? err.message : err}`);
+  process.exit(1);
+});

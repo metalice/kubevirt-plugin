@@ -9,7 +9,7 @@ import { execSync } from 'node:child_process';
 
 import { requireEnv } from '../kube-client';
 
-const main = (): void => {
+const main = async (): Promise<void> => {
   const clusterName = requireEnv('CLUSTER_NAME');
 
   console.log(`Job failed — deleting ROKS cluster '${clusterName}'...`);
@@ -22,4 +22,7 @@ const main = (): void => {
   }
 };
 
-main();
+void main().catch((err) => {
+  console.error(`::error::${err instanceof Error ? err.message : err}`);
+  process.exit(1);
+});

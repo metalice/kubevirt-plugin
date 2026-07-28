@@ -10,18 +10,18 @@ export type Subscription = {
   metadata: V1ObjectMeta;
   spec: {
     channel: string;
+    installPlanApproval?: 'Automatic' | 'Manual';
     name: string;
     source: string;
     sourceNamespace: string;
-    installPlanApproval?: 'Automatic' | 'Manual';
     startingCSV?: string;
   };
   status?: {
+    conditions?: Array<{ message?: string; status: string; type: string }>;
     currentCSV?: string;
     installedCSV?: string;
-    state?: string;
     installPlanRef?: { name: string; namespace: string };
-    conditions?: Array<{ type: string; status: string; message?: string }>;
+    state?: string;
   };
 };
 
@@ -34,8 +34,8 @@ export type InstallPlan = {
     clusterServiceVersionNames: string[];
   };
   status?: {
-    phase?: 'RequiresApproval' | 'Installing' | 'Complete' | 'Failed';
-    conditions?: Array<{ type: string; status: string; message?: string }>;
+    conditions?: Array<{ message?: string; status: string; type: string }>;
+    phase?: 'Complete' | 'Failed' | 'Installing' | 'RequiresApproval';
   };
 };
 
@@ -56,12 +56,12 @@ export type PackageManifest = {
     catalogSource: string;
     catalogSourceNamespace: string;
     channels: Array<{
-      name: string;
       currentCSV: string;
       currentCSVDesc?: {
-        version?: string;
         displayName?: string;
+        version?: string;
       };
+      name: string;
     }>;
     defaultChannel: string;
     packageName: string;
@@ -77,7 +77,7 @@ export type ClusterServiceVersion = {
     version?: string;
   };
   status?: {
-    phase?: 'Succeeded' | 'Failed' | 'Installing' | 'Pending';
-    conditions?: Array<{ type: string; status: string; message?: string }>;
+    conditions?: Array<{ message?: string; status: string; type: string }>;
+    phase?: 'Failed' | 'Installing' | 'Pending' | 'Succeeded';
   };
 };

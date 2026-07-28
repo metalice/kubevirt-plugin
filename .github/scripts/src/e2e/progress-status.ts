@@ -12,8 +12,9 @@
 import { Octokit } from '@octokit/rest';
 
 import { requireEnv } from '../utils';
+
 import { getRepoContext, getRunUrl } from '../shared/actions-context';
-import { setOutput, failStep } from '../shared/output';
+import { failStep, setOutput } from '../shared/output';
 
 const main = async (): Promise<void> => {
   const token = requireEnv('GITHUB_TOKEN');
@@ -30,18 +31,18 @@ const main = async (): Promise<void> => {
   }
 
   await octokit.repos.createCommitStatus({
-    owner,
-    repo,
-    sha: headSha,
     context: statusContext,
-    state: clusterReady ? 'pending' : 'failure',
     description: clusterReady
       ? 'Building plugin image'
       : 'Cluster not ready -- gating tests not run',
+    owner,
+    repo,
+    sha: headSha,
+    state: clusterReady ? 'pending' : 'failure',
     target_url: runUrl,
   });
 };
 
-main().catch((err) => {
+void main().catch((err) => {
   failStep(err instanceof Error ? err.message : String(err));
 });

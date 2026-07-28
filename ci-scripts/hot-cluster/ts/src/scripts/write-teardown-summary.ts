@@ -7,7 +7,7 @@
 
 import { appendFileSync } from 'node:fs';
 
-const main = (): void => {
+const main = async (): Promise<void> => {
   const found = process.env.FOUND ?? '';
   const instanceKey = process.env.INSTANCE_KEY ?? '';
   const namespace = process.env.CI_ENV_NS ?? '';
@@ -38,7 +38,12 @@ const main = (): void => {
   console.log(output);
 
   const summaryFile = process.env.GITHUB_STEP_SUMMARY;
-  if (summaryFile) appendFileSync(summaryFile, output + '\n');
+  if (summaryFile) {
+    appendFileSync(summaryFile, output + '\n');
+  }
 };
 
-main();
+void main().catch((err) => {
+  console.error(`::error::${err instanceof Error ? err.message : err}`);
+  process.exit(1);
+});

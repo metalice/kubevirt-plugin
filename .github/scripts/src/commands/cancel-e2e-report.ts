@@ -10,11 +10,12 @@
 import { Octokit } from '@octokit/rest';
 
 import { requireEnv } from '../utils';
+
 import { getRepoContext } from '../shared/actions-context';
 import { failStep } from '../shared/output';
 
 const main = async (): Promise<void> => {
-  const token = process.env.BOT_TOKEN || requireEnv('GITHUB_TOKEN');
+  const token = process.env.BOT_TOKEN ?? requireEnv('GITHUB_TOKEN');
   const { owner, repo } = getRepoContext();
   const prNumber = Number(requireEnv('PR_NUMBER'));
   const wasRunning = process.env.WAS_RUNNING === 'true';
@@ -25,13 +26,13 @@ const main = async (): Promise<void> => {
     : 'ℹ️ No Hot Cluster E2E run was in progress for this PR -- nothing to cancel.';
 
   try {
-    await octokit.issues.createComment({ owner, repo, issue_number: prNumber, body });
+    await octokit.issues.createComment({ body, issue_number: prNumber, owner, repo });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.warn(`Could not comment cancellation outcome: ${msg}`);
   }
 };
 
-main().catch((err) => {
+void main().catch((err) => {
   failStep(err instanceof Error ? err.message : String(err));
 });

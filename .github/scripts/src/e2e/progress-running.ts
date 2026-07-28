@@ -12,6 +12,7 @@
 import { Octokit } from '@octokit/rest';
 
 import { requireEnv } from '../utils';
+
 import { getRepoContext, getRunUrl } from '../shared/actions-context';
 import { failStep } from '../shared/output';
 
@@ -24,16 +25,16 @@ const main = async (): Promise<void> => {
   const octokit = new Octokit({ auth: token });
 
   await octokit.repos.createCommitStatus({
+    context: statusContext,
+    description: 'Running gating tests',
     owner,
     repo,
     sha,
-    context: statusContext,
     state: 'pending',
-    description: 'Running gating tests',
     target_url: runUrl,
   });
 };
 
-main().catch((err) => {
+void main().catch((err) => {
   failStep(err instanceof Error ? err.message : String(err));
 });

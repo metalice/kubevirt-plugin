@@ -8,6 +8,7 @@
 import { Octokit } from '@octokit/rest';
 
 import { requireEnv } from '../utils';
+
 import { getRepoContext } from '../shared/actions-context';
 import { dispatchWorkflow } from '../shared/dispatch';
 import { failStep } from '../shared/output';
@@ -18,25 +19,25 @@ const main = async (): Promise<void> => {
   const prNumber = Number(requireEnv('PR_NUMBER'));
   const octokit = new Octokit({ auth: token });
 
-  const { data: pr } = await octokit.pulls.get({ owner, repo, pull_number: prNumber });
+  const { data: pullRequest } = await octokit.pulls.get({ owner, pull_number: prNumber, repo });
 
   await dispatchWorkflow(octokit, {
+    inputs: {
+      base_ref: pullRequest.base.ref,
+      is_pool_retest: 'true',
+      pr_number: String(prNumber),
+    },
     owner,
+    ref: 'main',
     repo,
     workflowId: 'hot-cluster-e2e.yml',
-    ref: 'main',
-    inputs: {
-      pr_number: String(prNumber),
-      base_ref: pr.base.ref,
-      is_pool_retest: 'true',
-    },
   });
 
   console.log(
-    `PR #${prNumber}: dispatched a real retest against the new main tip (base_ref=${pr.base.ref}).`,
+    `PR #${prNumber}: dispatched a real retest against the new main tip (base_ref=${pullRequest.base.ref}).`,
   );
 };
 
-main().catch((err) => {
+void main().catch((err) => {
   failStep(err instanceof Error ? err.message : String(err));
 });

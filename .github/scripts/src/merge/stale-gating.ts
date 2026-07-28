@@ -10,9 +10,10 @@
 import { Octokit } from '@octokit/rest';
 
 import { requireEnv } from '../utils';
+
 import { getRepoContext } from '../shared/actions-context';
 import { isMergePoolPr } from '../shared/merge-pool';
-import { setOutput, failStep } from '../shared/output';
+import { failStep, setOutput } from '../shared/output';
 
 const main = async (): Promise<void> => {
   const token = requireEnv('GITHUB_TOKEN');
@@ -20,15 +21,17 @@ const main = async (): Promise<void> => {
   const octokit = new Octokit({ auth: token });
 
   const prs = await octokit.paginate(octokit.pulls.list, {
+    base: 'main',
     owner,
+    per_page: 100,
     repo,
     state: 'open',
-    base: 'main',
-    per_page: 100,
   });
 
-  const all = prs.map((pr) => pr.number);
-  const pool = prs.filter((pr) => isMergePoolPr(pr.labels)).map((pr) => pr.number);
+  const all = prs.map((pullRequest) => pullRequest.number);
+  const pool = prs
+    .filter((pullRequest) => isMergePoolPr(pullRequest.labels))
+    .map((pullRequest) => pullRequest.number);
 
   console.log(`Open PRs targeting main: ${all.length} total, ${pool.length} in the merge pool.`);
   console.log(`Pool PRs: ${pool.join(', ') || '(none)'}`);
@@ -37,6 +40,6 @@ const main = async (): Promise<void> => {
   setOutput('pool_pr_numbers', JSON.stringify(pool));
 };
 
-main().catch((err) => {
+void main().catch((err) => {
   failStep(err instanceof Error ? err.message : String(err));
 });

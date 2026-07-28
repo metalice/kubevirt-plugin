@@ -5,33 +5,34 @@
  * Env: OPENSHIFT_VERSION, CLUSTER_JSON (optional), OC_INSTALL_DIR
  */
 
-import { createWriteStream, mkdirSync, chmodSync } from 'node:fs';
-import { join } from 'node:path';
-import { tmpdir } from 'node:os';
 import { execSync } from 'node:child_process';
+import { createWriteStream, mkdirSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { pipeline } from 'node:stream/promises';
-
-import { requireEnv } from '../kube-client';
 
 const main = async (): Promise<void> => {
   const installDir = process.env.OC_INSTALL_DIR ?? '/usr/local/bin';
 
-  let version = process.env.OPENSHIFT_VERSION ?? '';
-
-  if (!version && process.env.CLUSTER_JSON) {
-    try {
-      const json = JSON.parse(process.env.CLUSTER_JSON);
-      const raw = json.masterKubeVersion ?? json.openshiftVersion ?? json.version ?? '';
-      if (raw) {
-        const parts = raw.split('.');
-        version = `${parts[0]}.${parts[1]}`;
-      }
-    } catch {
-      /* ignore */
+  const version = ((): string => {
+    const envVersion = process.env.OPENSHIFT_VERSION ?? '';
+    if (envVersion) {
+      return envVersion;
     }
-  }
-
-  version = version || '4.20';
+    if (process.env.CLUSTER_JSON) {
+      try {
+        const json = JSON.parse(process.env.CLUSTER_JSON) as Record<string, string>;
+        const raw: string = json.masterKubeVersion ?? json.openshiftVersion ?? json.version ?? '';
+        if (raw) {
+          const parts: string[] = raw.split('.');
+          return `${parts[0]}.${parts[1]}`;
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+    return '4.20';
+  })();
   console.log(`Installing oc client for OpenShift ${version}...`);
 
   const tmpDir = join(tmpdir(), `oc-install-${Date.now()}`);
@@ -60,7 +61,7 @@ const main = async (): Promise<void> => {
   execSync(`rm -rf "${tmpDir}"`);
 };
 
-main().catch((err) => {
+void main().catch((err) => {
   console.error(`::error::${err instanceof Error ? err.message : err}`);
   process.exit(1);
 });

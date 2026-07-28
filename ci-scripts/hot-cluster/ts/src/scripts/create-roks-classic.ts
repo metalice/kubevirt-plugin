@@ -9,7 +9,7 @@ import { execSync } from 'node:child_process';
 
 import { requireEnv } from '../kube-client';
 
-const main = (): void => {
+const main = async (): Promise<void> => {
   const clusterName = requireEnv('CLUSTER_NAME');
   const zone = requireEnv('ZONE');
   const openshiftVersion = requireEnv('OPENSHIFT_VERSION');
@@ -17,19 +17,23 @@ const main = (): void => {
   const workerCount = requireEnv('WORKER_COUNT');
 
   console.log(`Looking up existing VLANs in zone '${zone}'...`);
-  let vlanJson: Array<{ type: string; id: string }>;
-  try {
-    const raw = execSync(`ibmcloud oc vlan ls --zone "${zone}" --output json`, {
-      encoding: 'utf8',
-      stdio: ['pipe', 'pipe', 'pipe'],
-    });
-    vlanJson = JSON.parse(raw);
-  } catch {
-    vlanJson = [];
-  }
+  const vlanJson: Array<{ id: string; type: string }> = ((): Array<{
+    id: string;
+    type: string;
+  }> => {
+    try {
+      const raw = execSync(`ibmcloud oc vlan ls --zone "${zone}" --output json`, {
+        encoding: 'utf8',
+        stdio: ['pipe', 'pipe', 'pipe'],
+      });
+      return JSON.parse(raw);
+    } catch {
+      return [];
+    }
+  })();
 
-  const privateVlan = vlanJson.find((v) => v.type === 'private')?.id ?? '';
-  const publicVlan = vlanJson.find((v) => v.type === 'public')?.id ?? '';
+  const privateVlan = vlanJson.find((vlan) => vlan.type === 'private')?.id ?? '';
+  const publicVlan = vlanJson.find((vlan) => vlan.type === 'public')?.id ?? '';
 
   if (privateVlan) {
     console.log(`Reusing existing private VLAN: ${privateVlan}`);
@@ -56,4 +60,7 @@ const main = (): void => {
   );
 };
 
-main();
+void main().catch((err) => {
+  console.error(`::error::${err instanceof Error ? err.message : err}`);
+  process.exit(1);
+});

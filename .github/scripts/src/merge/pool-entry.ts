@@ -10,11 +10,12 @@
 import { Octokit } from '@octokit/rest';
 
 import { requireEnv } from '../utils';
+
 import { getRepoContext } from '../shared/actions-context';
-import { isMergePoolPr } from '../shared/merge-pool';
-import { isListedInLocalOwners } from '../shared/owners';
 import { dispatchWorkflow } from '../shared/dispatch';
+import { isMergePoolPr } from '../shared/merge-pool';
 import { failStep } from '../shared/output';
+import { isListedInLocalOwners } from '../shared/owners';
 
 const STALE_TITLES = [
   'Hot Cluster E2E: stale -- main has advanced since this ran',
@@ -27,7 +28,7 @@ const main = async (): Promise<void> => {
   const prNumber = Number(requireEnv('PR_NUMBER'));
   const headSha = requireEnv('PR_HEAD_SHA');
   const baseRef = requireEnv('PR_BASE_REF');
-  const labels: Array<{ name: string }> = JSON.parse(requireEnv('PR_LABELS'));
+  const labels = JSON.parse(requireEnv('PR_LABELS')) as Array<{ name: string }>;
   const prAuthor = requireEnv('PR_AUTHOR');
   const headRepoFullName = process.env.PR_HEAD_REPO ?? '';
   const baseRepoFullName = `${owner}/${repo}`;
@@ -40,7 +41,7 @@ const main = async (): Promise<void> => {
 
   const ownedByAuthor = isListedInLocalOwners(prAuthor);
   const sameRepo = headRepoFullName === baseRepoFullName;
-  const hasOkToTest = labels.some((l) => l.name === 'ok-to-test');
+  const hasOkToTest = labels.some((label) => label.name === 'ok-to-test');
   const trusted = ownedByAuthor || sameRepo || hasOkToTest;
 
   if (!trusted) {
@@ -49,12 +50,12 @@ const main = async (): Promise<void> => {
   }
 
   const { data: existing } = await octokit.checks.listForRef({
-    owner,
-    repo,
-    ref: headSha,
     check_name: 'Run Gating Tests',
+    owner,
+    ref: headSha,
+    repo,
   });
-  const [latest] = existing.check_runs.sort(
+  const [latest] = [...existing.check_runs].sort(
     (a, b) => new Date(b.started_at ?? '').getTime() - new Date(a.started_at ?? '').getTime(),
   );
 
@@ -70,18 +71,18 @@ const main = async (): Promise<void> => {
 
   console.log(`PR #${prNumber} just became pool-eligible while stale -- dispatching fresh retest.`);
   await dispatchWorkflow(octokit, {
-    owner,
-    repo,
-    workflowId: 'hot-cluster-e2e.yml',
-    ref: 'main',
     inputs: {
-      pr_number: String(prNumber),
       base_ref: baseRef,
       is_pool_retest: 'true',
+      pr_number: String(prNumber),
     },
+    owner,
+    ref: 'main',
+    repo,
+    workflowId: 'hot-cluster-e2e.yml',
   });
 };
 
-main().catch((err) => {
+void main().catch((err) => {
   failStep(err instanceof Error ? err.message : String(err));
 });

@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
-import { readFileSync, writeFileSync, unlinkSync } from 'node:fs';
+import { readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 
-import { setOutput, addStepSummary } from './output';
+import { addStepSummary, setOutput } from './output';
 
 describe('setOutput', () => {
   const tmpFile = join(tmpdir(), `gh-output-test-${process.pid}.txt`);
@@ -16,8 +16,11 @@ describe('setOutput', () => {
   });
 
   afterEach(() => {
-    if (originalEnv === undefined) delete process.env.GITHUB_OUTPUT;
-    else process.env.GITHUB_OUTPUT = originalEnv;
+    if (originalEnv === undefined) {
+      delete process.env.GITHUB_OUTPUT;
+    } else {
+      process.env.GITHUB_OUTPUT = originalEnv;
+    }
     try {
       unlinkSync(tmpFile);
     } catch {
@@ -79,8 +82,11 @@ describe('addStepSummary', () => {
   });
 
   afterEach(() => {
-    if (originalEnv === undefined) delete process.env.GITHUB_STEP_SUMMARY;
-    else process.env.GITHUB_STEP_SUMMARY = originalEnv;
+    if (originalEnv === undefined) {
+      delete process.env.GITHUB_STEP_SUMMARY;
+    } else {
+      process.env.GITHUB_STEP_SUMMARY = originalEnv;
+    }
     try {
       unlinkSync(tmpFile);
     } catch {
@@ -96,6 +102,6 @@ describe('addStepSummary', () => {
 
   it('is a no-op when GITHUB_STEP_SUMMARY is not set', () => {
     delete process.env.GITHUB_STEP_SUMMARY;
-    addStepSummary('should not throw');
+    assert.doesNotThrow(() => addStepSummary('should not throw'));
   });
 });

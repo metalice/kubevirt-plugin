@@ -5,10 +5,12 @@
  * Required env: TEST_ENGINE
  */
 
-import { existsSync, readFileSync, appendFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 
-const decode = (s: string): string =>
-  s
+import { setMultilineOutput, setOutput } from '../utils';
+
+const decode = (text: string): string =>
+  text
     .replace(/&amp;/g, '&')
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
@@ -17,26 +19,82 @@ const decode = (s: string): string =>
     .replace(/&#10;/g, ' ')
     .replace(/&#13;/g, '');
 
-const attr = (el: string, name: string): string => {
-  const m = el.match(new RegExp(name + '="([^"]*)"'));
-  return m ? decode(m[1]) : '';
+const attr = (element: string, name: string): string => {
+  const match = new RegExp(name + '="([^"]*)"').exec(element);
+  return match ? decode(match[1]) : '';
 };
 
 const RESULTS_FILE = 'playwright/test-results/results.xml';
 const MAX_FAILURES = 25;
 const MAX_LENGTH = 60_000;
 
-const main = (): void => {
+type Failure = { msg: string; name: string };
+
+const extractFailure = (testcaseAttrs: string, testcaseBody: string): Failure | undefined => {
+  if (!testcaseBody.includes('<failure')) {
+    return undefined;
+  }
+  const failTag = /<failure\s+([^>]*?)(?:\/>|>[^<]*(?:<(?!\/failure>)[^<]*)*<\/failure>)/.exec(
+    testcaseBody,
+  );
+  return {
+    msg: failTag ? attr(failTag[1], 'message') : '',
+    name: attr(testcaseAttrs, 'name'),
+  };
+};
+
+const parseFailures = (xml: string): Failure[] => {
+  const failures: Failure[] = [];
+  const pattern = /<testcase\s+([^>]*)>([^<]*(?:<(?!\/testcase>)[^<]*)*)<\/testcase>/g;
+  for (const match of xml.matchAll(pattern)) {
+    const failure = extractFailure(match[1], match[2]);
+    if (failure) {
+      failures.push(failure);
+    }
+  }
+  return failures;
+};
+
+const formatSummary = (
+  total: string,
+  failed: string,
+  passed: string,
+  skipped: string,
+  failures: Failure[],
+): string => {
+  const header =
+    `**${failed}** of **${total}** tests failed, **${passed}** passed` +
+    (skipped !== '0' ? `, ${skipped} skipped` : '');
+  const tableHeader = '\n\n| Test | Error |\n| --- | --- |\n';
+  const rows = failures
+    .slice(0, MAX_FAILURES)
+    .map((failure) => {
+      const name = failure.name.replace(/\|/g, '\\|').replace(/\n/g, ' ');
+      const msg = failure.msg.replace(/\|/g, '\\|').replace(/\n/g, ' ').substring(0, 200);
+      return `| ${name} | ${msg} |\n`;
+    })
+    .join('');
+  const overflow =
+    failures.length > MAX_FAILURES
+      ? `\n_...and ${failures.length - MAX_FAILURES} more failures (see workflow artifacts for full report)_\n`
+      : '';
+  const assembled = header + tableHeader + rows + overflow;
+  return assembled.length > MAX_LENGTH
+    ? assembled.substring(0, MAX_LENGTH) + '\n\n_...truncated_\n'
+    : assembled;
+};
+
+const main = async (): Promise<void> => {
   const testEngine = process.env.TEST_ENGINE ?? '';
 
   if (testEngine !== 'playwright' || !existsSync(RESULTS_FILE)) {
-    appendFileSync(process.env.GITHUB_OUTPUT!, 'test_summary=\n');
+    setOutput('test_summary', '');
     return;
   }
 
   const xml = readFileSync(RESULTS_FILE, 'utf8');
 
-  const root = xml.match(/<testsuites[^>]*>/);
+  const root = /<testsuites[^>]*>/.exec(xml);
   const total = root ? attr(root[0], 'tests') : '?';
   const failed = root ? attr(root[0], 'failures') : '?';
   const skipped = root ? attr(root[0], 'skipped') : '0';
@@ -46,45 +104,20 @@ const main = (): void => {
       : '?';
 
   if (failed === '0') {
-    appendFileSync(process.env.GITHUB_OUTPUT!, 'test_summary=\n');
+    setOutput('test_summary', '');
     return;
   }
 
-  type Failure = { name: string; msg: string };
-  const failures: Failure[] = [];
-  const re = /<testcase\s+([\s\S]*?)>([\s\S]*?)<\/testcase>/g;
-  let m;
-  while ((m = re.exec(xml)) !== null) {
-    if (!m[2].includes('<failure')) continue;
-    const failTag = m[2].match(/<failure\s+([\s\S]*?)(?:\/>|>[\s\S]*?<\/failure>)/);
-    failures.push({
-      name: attr(m[1], 'name'),
-      msg: failTag ? attr(failTag[1], 'message') : '',
-    });
-  }
-
+  const failures = parseFailures(xml);
   if (failures.length === 0) {
-    appendFileSync(process.env.GITHUB_OUTPUT!, 'test_summary=\n');
+    setOutput('test_summary', '');
     return;
   }
 
-  let out = `**${failed}** of **${total}** tests failed, **${passed}** passed`;
-  if (skipped !== '0') out += `, ${skipped} skipped`;
-  out += '\n\n| Test | Error |\n| --- | --- |\n';
-  for (const f of failures.slice(0, MAX_FAILURES)) {
-    const name = f.name.replace(/\|/g, '\\|').replace(/\n/g, ' ');
-    const msg = f.msg.replace(/\|/g, '\\|').replace(/\n/g, ' ').substring(0, 200);
-    out += `| ${name} | ${msg} |\n`;
-  }
-  if (failures.length > MAX_FAILURES) {
-    out += `\n_...and ${failures.length - MAX_FAILURES} more failures (see workflow artifacts for full report)_\n`;
-  }
-  if (out.length > MAX_LENGTH) {
-    out = out.substring(0, MAX_LENGTH) + '\n\n_...truncated_\n';
-  }
-
-  const output = process.env.GITHUB_OUTPUT!;
-  appendFileSync(output, `test_summary<<SUMMARY_DELIM\n${out}\nSUMMARY_DELIM\n`);
+  setMultilineOutput('test_summary', formatSummary(total, failed, passed, skipped, failures));
 };
 
-main();
+void main().catch((err) => {
+  console.error(`::error::${err instanceof Error ? err.message : err}`);
+  process.exit(1);
+});

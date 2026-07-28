@@ -7,9 +7,9 @@
  */
 
 import { execSync } from 'node:child_process';
-import { appendFileSync } from 'node:fs';
 
 import { requireEnv } from '../kube-client';
+import { setOutput } from '../utils';
 
 const main = async (): Promise<void> => {
   const clusterName = requireEnv('CLUSTER_NAME');
@@ -19,39 +19,46 @@ const main = async (): Promise<void> => {
     console.log(
       '::warning::ARC app token unavailable (see previous step) -- failing closed (treating as busy).',
     );
-    appendFileSync(process.env.GITHUB_OUTPUT!, 'busy=true\n');
+    setOutput('busy', 'true');
     return;
   }
 
-  let runnersJson: string;
-  try {
-    runnersJson = execSync(
-      `gh api "repos/${requireEnv('GITHUB_REPOSITORY')}/actions/runners?per_page=100"`,
-      { encoding: 'utf8', env: { ...process.env, GH_TOKEN: ghToken } },
-    );
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    console.log(
-      `::warning::Failed to query self-hosted runners: ${msg} -- failing closed (treating as busy).`,
-    );
-    appendFileSync(process.env.GITHUB_OUTPUT!, 'busy=true\n');
+  const runnersJson = ((): string => {
+    try {
+      return execSync(
+        `gh api "repos/${requireEnv('GITHUB_REPOSITORY')}/actions/runners?per_page=100"`,
+        { encoding: 'utf8', env: { ...process.env, GH_TOKEN: ghToken } },
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.log(
+        `::warning::Failed to query self-hosted runners: ${msg} -- failing closed (treating as busy).`,
+      );
+      return '';
+    }
+  })();
+
+  if (!runnersJson) {
+    setOutput('busy', 'true');
     return;
   }
 
   const data = JSON.parse(runnersJson) as {
-    total_count: number;
     runners: Array<{ busy: boolean; labels?: Array<{ name: string }> }>;
+    total_count: number;
   };
 
-  const busy = data.runners.some((r) => r.busy && r.labels?.some((l) => l.name === clusterName));
+  const busy = data.runners.some(
+    (runner) => runner.busy && runner.labels?.some((label) => label.name === clusterName),
+  );
 
   console.log(
     `Runner pool for '${clusterName}': ${busy ? 'busy' : 'idle'} (${data.total_count} total runners checked).`,
   );
-  appendFileSync(process.env.GITHUB_OUTPUT!, `busy=${busy}\n`);
+  setOutput('busy', String(busy));
 };
 
-main().catch((err) => {
+void main().catch((err) => {
   console.error(`::error::${err instanceof Error ? err.message : err}`);
   process.exit(1);
 });

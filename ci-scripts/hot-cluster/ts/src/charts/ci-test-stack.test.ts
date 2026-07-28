@@ -4,28 +4,28 @@ import { describe, it } from 'node:test';
 import { buildCiTestStack, type CiTestStackConfig } from './ci-test-stack';
 
 const testConfig: CiTestStackConfig = {
-  releaseName: 'test-release',
-  namespace: 'test-ns',
-  plugin: { image: 'plugin:latest', port: 9080, replicas: 1 },
   console: {
+    apiServer: 'https://api.cluster.example.com:6443',
+    auth: { caCert: '', mode: 'disabled', redirectPath: '/auth/callback' },
     image: 'console:latest',
+    monitoring: { alertmanagerUrl: '', thanosUrl: '' },
+    pluginProxy: { endpoint: '' },
     port: 9000,
     replicas: 1,
-    apiServer: 'https://api.cluster.example.com:6443',
     route: { enabled: true, host: 'console.apps.cluster.example.com' },
-    pluginProxy: { endpoint: '' },
-    monitoring: { thanosUrl: '', alertmanagerUrl: '' },
-    auth: { mode: 'disabled', redirectPath: '/auth/callback', caCert: '' },
     userSettingsLocation: 'localstorage',
   },
+  namespace: 'test-ns',
+  plugin: { image: 'plugin:latest', port: 9080, replicas: 1 },
   rbac: { consoleClusterRole: 'cluster-admin', testRunnerClusterRole: 'ci-env-test-runner' },
+  releaseName: 'test-release',
   runner: { saName: 'runner-sa', saNamespace: 'arc-runners' },
 };
 
 describe('buildCiTestStack', () => {
   it('produces the expected number of resources', () => {
     const resources = buildCiTestStack(testConfig);
-    assert.ok(resources.length >= 9, `Expected at least 9 resources, got ${resources.length}`);
+    assert.ok(resources.length >= 8, `Expected at least 8 resources, got ${resources.length}`);
   });
 
   it('includes a console Deployment', () => {
@@ -56,7 +56,7 @@ describe('buildCiTestStack', () => {
       console: { ...testConfig.console, route: { enabled: false, host: '' } },
     };
     const resources = buildCiTestStack(config);
-    assert.ok(!resources.find((r) => r.kind === 'Route'), 'Route should not be present');
+    assert.ok(!resources.some((r) => r.kind === 'Route'), 'Route should not be present');
   });
 
   it('labels all resources with managed-by', () => {

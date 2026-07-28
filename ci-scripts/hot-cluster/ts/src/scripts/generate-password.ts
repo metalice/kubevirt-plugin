@@ -5,13 +5,17 @@
  */
 
 import { randomBytes } from 'node:crypto';
-import { appendFileSync } from 'node:fs';
 
-const main = (): void => {
+import { setOutput } from '../utils';
+
+const main = async (): Promise<void> => {
   const password = randomBytes(24).toString('base64');
 
   console.log(`::add-mask::${password}`);
-  appendFileSync(process.env.GITHUB_OUTPUT!, `password=${password}\n`);
+  setOutput('password', password);
 };
 
-main();
+void main().catch((err) => {
+  console.error(`::error::${err instanceof Error ? err.message : err}`);
+  process.exit(1);
+});

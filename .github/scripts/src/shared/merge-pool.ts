@@ -29,29 +29,29 @@ export const BLOCKING_LABELS = Object.freeze([
 export const isBlockingLabel = (name: string): boolean =>
   (BLOCKING_LABELS as readonly string[]).includes(name) || name.startsWith(DO_NOT_MERGE_PREFIX);
 
-type LabelInput = string | { name: string };
+type LabelInput = { name: string } | string;
 
 const toLabelNames = (labels: LabelInput[]): string[] =>
-  labels.map((l) => (typeof l === 'string' ? l : l.name));
+  labels.map((label) => (typeof label === 'string' ? label : label.name));
 
 export type MergePoolBlockers = {
-  missingLgtm: boolean;
-  missingApproved: boolean;
   blockingLabels: string[];
+  missingApproved: boolean;
+  missingLgtm: boolean;
 };
 
 /** Break down which specific merge-pool conditions are unmet. */
 export const getMergePoolBlockers = (labels: LabelInput[]): MergePoolBlockers => {
   const names = toLabelNames(labels);
   return {
-    missingLgtm: !names.includes(LGTM_LABEL),
-    missingApproved: !names.includes(APPROVED_LABEL),
     blockingLabels: names.filter(isBlockingLabel),
+    missingApproved: !names.includes(APPROVED_LABEL),
+    missingLgtm: !names.includes(LGTM_LABEL),
   };
 };
 
 /** True when a PR carries lgtm + approved and no blocking labels. */
 export const isMergePoolPr = (labels: LabelInput[]): boolean => {
-  const { missingLgtm, missingApproved, blockingLabels } = getMergePoolBlockers(labels);
+  const { blockingLabels, missingApproved, missingLgtm } = getMergePoolBlockers(labels);
   return !missingLgtm && !missingApproved && blockingLabels.length === 0;
 };

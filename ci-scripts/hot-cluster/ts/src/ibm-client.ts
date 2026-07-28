@@ -18,7 +18,7 @@ export type IbmCloudConfig = {
 
 /** Read IBM Cloud config from environment variables. */
 export const getIbmCloudConfig = (): IbmCloudConfig => ({
-  apiKey: process.env.IC_KEY || process.env.IC_API_KEY || requireEnv('IC_KEY'),
+  apiKey: process.env.IC_KEY ?? process.env.IC_API_KEY ?? requireEnv('IC_KEY'),
   region: process.env.IBM_REGION ?? 'eu-de',
   resourceGroup: process.env.IBM_RESOURCE_GROUP ?? 'cnv-ui',
 });

@@ -8,8 +8,9 @@
 import { Octokit } from '@octokit/rest';
 
 import { requireEnv } from '../utils';
+
 import { getRepoContext } from '../shared/actions-context';
-import { setOutput, addStepSummary, failStep } from '../shared/output';
+import { addStepSummary, failStep, setOutput } from '../shared/output';
 import { checkCIActivity } from './check-ci-activity';
 
 const main = async (): Promise<void> => {
@@ -49,6 +50,6 @@ const main = async (): Promise<void> => {
   }
 };
 
-main().catch((err) => {
+void main().catch((err) => {
   failStep(err instanceof Error ? err.message : String(err));
 });

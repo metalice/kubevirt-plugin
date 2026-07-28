@@ -9,10 +9,10 @@
  */
 
 import { execSync } from 'node:child_process';
-import { appendFileSync } from 'node:fs';
 
 import { waitForConfigMapStatus } from '../ci-env-poll';
 import { requireEnv } from '../kube-client';
+import { addStepSummary, setOutput } from '../utils';
 
 const cmName = requireEnv('CM_NAME');
 const cmNs = requireEnv('CM_NS');
@@ -36,25 +36,22 @@ data:
   user-settings-location: "${userSettingsLocation}"
 `.trim();
 
-execSync(`echo '${manifest}' | oc create -f -`, { stdio: 'inherit' });
+execSync('oc create -f -', { input: manifest, stdio: ['pipe', 'inherit', 'inherit'] });
 console.log(`Created trigger ConfigMap ${cmName} in ${cmNs}`);
 
 const main = async (): Promise<void> => {
   const result = await waitForConfigMapStatus({
+    label: 'test environment',
     name: cmName,
     namespace: cmNs,
     targetStatus: 'ready',
     timeoutSeconds: timeout,
-    label: 'test environment',
   });
 
-  const output = process.env.GITHUB_OUTPUT!;
-  appendFileSync(output, `bridge-base-address=${result.data['bridge-base-address']}\n`);
-  appendFileSync(output, `console-route=${result.data['console-route']}\n`);
+  setOutput('bridge-base-address', result.data['bridge-base-address']);
+  setOutput('console-route', result.data['console-route']);
 
-  const summary = process.env.GITHUB_STEP_SUMMARY!;
-  appendFileSync(
-    summary,
+  addStepSummary(
     [
       '<details><summary>CI Test Environment</summary>',
       '',
@@ -70,12 +67,11 @@ const main = async (): Promise<void> => {
       `| Console route | \`${result.data['console-route']}\` |`,
       '',
       '</details>',
-      '',
     ].join('\n'),
   );
 };
 
-main().catch((err) => {
+void main().catch((err) => {
   console.error(`::error::${err instanceof Error ? err.message : err}`);
   process.exit(1);
 });

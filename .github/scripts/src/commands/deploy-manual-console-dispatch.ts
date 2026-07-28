@@ -12,9 +12,10 @@
 import { Octokit } from '@octokit/rest';
 
 import { requireEnv } from '../utils';
+
 import { getRepoContext } from '../shared/actions-context';
 import { dispatchWorkflow } from '../shared/dispatch';
-import { setOutput, failStep, warnStep } from '../shared/output';
+import { failStep, setOutput, warnStep } from '../shared/output';
 
 const main = async (): Promise<void> => {
   const token = requireEnv('GITHUB_TOKEN');
@@ -28,22 +29,22 @@ const main = async (): Promise<void> => {
   if (detectOutcome === 'failure') {
     warnStep(`Cluster infra detection for '${clusterName}' failed -- falling back to 'ipi'.`);
   }
-  const infraType = process.env.INFRA_TYPE || 'ipi';
+  const infraType = process.env.INFRA_TYPE ?? 'ipi';
 
   await dispatchWorkflow(octokit, {
-    owner,
-    repo,
-    workflowId: 'deploy-manual-console.yml',
-    ref: 'main',
     inputs: {
-      pr_number: prNumber,
       branch: baseRef,
       cluster_name: clusterName,
-      infrastructure_type: infraType,
-      openshift_version: process.env.OPENSHIFT_VERSION ?? '',
       cnv_channel: process.env.CNV_CHANNEL ?? '',
       cnv_pin_version: process.env.CNV_PIN_VERSION ?? '',
+      infrastructure_type: infraType,
+      openshift_version: process.env.OPENSHIFT_VERSION ?? '',
+      pr_number: prNumber,
     },
+    owner,
+    ref: 'main',
+    repo,
+    workflowId: 'deploy-manual-console.yml',
   });
 
   console.log(
@@ -58,28 +59,28 @@ import type { CommandContext } from './dispatcher';
 const DEPLOY_CMD_REGEX = /\/deploy-manual-console\s+(\S+)/;
 
 export const executeDeployConsole = async (ctx: CommandContext): Promise<void> => {
-  const clusterMatch = ctx.commentBody.match(DEPLOY_CMD_REGEX);
+  const clusterMatch = DEPLOY_CMD_REGEX.exec(ctx.commentBody);
   if (!clusterMatch) {
     throw new Error(
       '`/deploy-manual-console` requires a cluster name, e.g. `/deploy-manual-console my-cluster`.',
     );
   }
 
-  const { data: pr } = await ctx.octokit.pulls.get({
+  const { data: pullRequest } = await ctx.octokit.pulls.get({
     owner: ctx.owner,
-    repo: ctx.repo,
     pull_number: ctx.prNumber,
+    repo: ctx.repo,
   });
 
-  process.env.BOT_TOKEN = process.env.BOT_TOKEN || '';
+  process.env.BOT_TOKEN = process.env.BOT_TOKEN ?? '';
   process.env.PR_NUMBER = String(ctx.prNumber);
   process.env.COMMENT_ID = String(ctx.commentId);
   process.env.COMMENT_AUTHOR = ctx.author;
-  process.env.BASE_REF = pr.base.ref;
+  process.env.BASE_REF = pullRequest.base.ref;
   process.env.CLUSTER_NAME = clusterMatch[1];
   await main();
 };
 
 if (require.main === module) {
-  main().catch((err) => failStep(err instanceof Error ? err.message : String(err)));
+  void main().catch((err) => failStep(err instanceof Error ? err.message : String(err)));
 }

@@ -7,9 +7,9 @@
 import type { CommandContext } from './dispatcher';
 
 export const executeClone = async (ctx: CommandContext): Promise<void> => {
-  const [{ data: pr }, { data: comment }] = await Promise.all([
-    ctx.octokit.pulls.get({ owner: ctx.owner, repo: ctx.repo, pull_number: ctx.prNumber }),
-    ctx.octokit.issues.getComment({ owner: ctx.owner, repo: ctx.repo, comment_id: ctx.commentId }),
+  const [{ data: pullRequest }, { data: comment }] = await Promise.all([
+    ctx.octokit.pulls.get({ owner: ctx.owner, pull_number: ctx.prNumber, repo: ctx.repo }),
+    ctx.octokit.issues.getComment({ comment_id: ctx.commentId, owner: ctx.owner, repo: ctx.repo }),
   ]);
 
   process.env.COMMENT_BODY = ctx.commentBody;
@@ -17,10 +17,10 @@ export const executeClone = async (ctx: CommandContext): Promise<void> => {
   process.env.COMMENT_ID = String(ctx.commentId);
   process.env.COMMENT_AUTHOR = ctx.author;
   process.env.COMMENT_AUTHOR_ASSOCIATION = comment.author_association;
-  process.env.PR_TITLE = pr.title;
-  process.env.HEAD_SHA = pr.head.sha;
-  process.env.MERGE_COMMIT_SHA = pr.merge_commit_sha ?? '';
-  process.env.BASE_BRANCH = pr.base.ref;
+  process.env.PR_TITLE = pullRequest.title;
+  process.env.HEAD_SHA = pullRequest.head.sha;
+  process.env.MERGE_COMMIT_SHA = pullRequest.merge_commit_sha ?? '';
+  process.env.BASE_BRANCH = pullRequest.base.ref;
 
   await import('../clone/index');
 };

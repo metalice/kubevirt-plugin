@@ -5,10 +5,9 @@
  * Env: TEST_SECRET_NAME, TEST_NS, TEST_ENGINE
  */
 
+import * as yaml from 'js-yaml';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-
-import * as yaml from 'js-yaml';
 
 import { KubeClient, requireEnv } from '../kube-client';
 
@@ -28,8 +27,8 @@ const main = async (): Promise<void> => {
 
   try {
     await client.coreV1.createNamespacedSecret({
-      namespace: testNs,
       body: content as Parameters<typeof client.coreV1.createNamespacedSecret>[0]['body'],
+      namespace: testNs,
     });
     console.log(`Created secret ${secretName} in ${testNs}`);
   } catch (err) {
@@ -41,7 +40,7 @@ const main = async (): Promise<void> => {
   }
 };
 
-main().catch((err) => {
+void main().catch((err) => {
   console.error(`::error::${err instanceof Error ? err.message : err}`);
   process.exit(1);
 });

@@ -1,57 +1,54 @@
-/**
- * KubeClient -- thin wrapper around @kubernetes/client-node with:
- *   - Automatic ServiceAccount token refresh (re-reads token file every 50min)
- *   - Retry with exponential backoff (409, 429, 503)
- *   - waitForCondition() -- generic poller replacing `oc wait`
- *   - bulkDelete() -- delete multiple resource types by label selector
- */
+/** KubeClient -- @kubernetes/client-node wrapper with SA token refresh, retry, waitForCondition, bulkDelete. */
 
 import { readFileSync } from 'node:fs';
 
 import * as k8s from '@kubernetes/client-node';
 
+import { bulkDeleteResources } from './bulk-delete';
+import { isRetryableError } from './retry';
+import { requireEnv, sleep } from './utils';
+
+export { requireEnv, sleep };
+export { withRetry } from './retry';
+
 const SA_TOKEN_PATH = '/var/run/secrets/kubernetes.io/serviceaccount/token';
 const TOKEN_REFRESH_MS = 50 * 60 * 1000;
 
-const RETRYABLE_STATUS_CODES = new Set([409, 429, 503]);
-const MAX_RETRIES = 5;
-const BASE_DELAY_MS = 1000;
-
 export class KubeClient {
-  private tokenRefreshTimer: ReturnType<typeof setInterval> | null = null;
-  readonly kc: k8s.KubeConfig;
+  private tokenRefreshTimer: null | ReturnType<typeof setInterval> = null;
+  readonly kubeConfig: k8s.KubeConfig;
 
-  private constructor(kc: k8s.KubeConfig) {
-    this.kc = kc;
+  private constructor(kubeConfig: k8s.KubeConfig) {
+    this.kubeConfig = kubeConfig;
   }
 
   static fromCluster(): KubeClient {
-    const kc = new k8s.KubeConfig();
-    kc.loadFromCluster();
-    const client = new KubeClient(kc);
+    const kubeConfig = new k8s.KubeConfig();
+    kubeConfig.loadFromCluster();
+    const client = new KubeClient(kubeConfig);
     client.startTokenRefresh();
     return client;
   }
 
-  static fromConfig(kc: k8s.KubeConfig): KubeClient {
-    return new KubeClient(kc);
+  static fromConfig(kubeConfig: k8s.KubeConfig): KubeClient {
+    return new KubeClient(kubeConfig);
   }
 
   static fromKubeconfig(path?: string): KubeClient {
-    const kc = new k8s.KubeConfig();
+    const kubeConfig = new k8s.KubeConfig();
     if (path) {
-      kc.loadFromFile(path);
+      kubeConfig.loadFromFile(path);
     } else {
-      kc.loadFromDefault();
+      kubeConfig.loadFromDefault();
     }
-    return new KubeClient(kc);
+    return new KubeClient(kubeConfig);
   }
 
   private startTokenRefresh(): void {
     this.tokenRefreshTimer = setInterval(() => {
       try {
         const token = readFileSync(SA_TOKEN_PATH, 'utf8').trim();
-        const users = this.kc.getUsers();
+        const users = this.kubeConfig.getUsers();
         if (users.length > 0) {
           (users[0] as { token?: string }).token = token;
         }
@@ -67,72 +64,23 @@ export class KubeClient {
   }
 
   get appsV1(): k8s.AppsV1Api {
-    return this.kc.makeApiClient(k8s.AppsV1Api);
+    return this.kubeConfig.makeApiClient(k8s.AppsV1Api);
   }
 
-  /**
-   * Delete all resources of multiple types in a namespace.
-   * Replaces `oc delete vm,vmi,dv,pvc --all -n $NS`.
-   */
   async bulkDelete(params: {
-    namespace: string;
-    resources: Array<{ group: string; version: string; plural: string }>;
     labelSelector?: string;
+    namespace: string;
+    resources: Array<{ group: string; plural: string; version: string }>;
   }): Promise<number> {
-    const { namespace, resources, labelSelector } = params;
-    let deleted = 0;
-
-    for (const { group, version, plural } of resources) {
-      try {
-        if (group === '' && version === 'v1') {
-          const coreApi = this.coreV1;
-          const opts = { namespace, labelSelector };
-
-          switch (plural) {
-            case 'pods':
-              await coreApi.deleteCollectionNamespacedPod(opts);
-              break;
-            case 'services':
-              await coreApi.deleteCollectionNamespacedService(opts);
-              break;
-            case 'configmaps':
-              await coreApi.deleteCollectionNamespacedConfigMap(opts);
-              break;
-            case 'persistentvolumeclaims':
-              await coreApi.deleteCollectionNamespacedPersistentVolumeClaim(opts);
-              break;
-            case 'secrets':
-              await coreApi.deleteCollectionNamespacedSecret(opts);
-              break;
-            default:
-              console.warn(`Unsupported core resource for bulk delete: ${plural}`);
-              continue;
-          }
-        } else {
-          await this.customObjects.deleteCollectionNamespacedCustomObject({
-            group,
-            version,
-            namespace,
-            plural,
-          });
-        }
-        deleted++;
-      } catch (err) {
-        if ((err as { statusCode?: number }).statusCode === 404) continue;
-        const msg = err instanceof Error ? err.message : String(err);
-        console.warn(`Failed to delete ${group}/${version}/${plural} in ${namespace}: ${msg}`);
-      }
-    }
-
-    return deleted;
+    return bulkDeleteResources(this.coreV1, this.customObjects, params);
   }
 
   get coreV1(): k8s.CoreV1Api {
-    return this.kc.makeApiClient(k8s.CoreV1Api);
+    return this.kubeConfig.makeApiClient(k8s.CoreV1Api);
   }
 
   get customObjects(): k8s.CustomObjectsApi {
-    return this.kc.makeApiClient(k8s.CustomObjectsApi);
+    return this.kubeConfig.makeApiClient(k8s.CustomObjectsApi);
   }
 
   dispose(): void {
@@ -147,86 +95,59 @@ export class KubeClient {
    * Replaces `oc wait --for=condition=X --timeout=Y`.
    */
   async waitForCondition(params: {
+    conditionType: string;
     group: string;
-    version: string;
-    plural: string;
     name: string;
     namespace?: string;
-    conditionType: string;
-    timeoutMs: number;
+    plural: string;
     pollIntervalMs?: number;
+    timeoutMs: number;
+    version: string;
   }): Promise<void> {
     const {
+      conditionType,
       group,
-      version,
-      plural,
       name,
       namespace,
-      conditionType,
-      timeoutMs,
+      plural,
       pollIntervalMs = 5000,
+      timeoutMs,
+      version,
     } = params;
     const deadline = Date.now() + timeoutMs;
     const api = this.customObjects;
 
-    while (Date.now() < deadline) {
+    const poll = async (): Promise<void> => {
+      if (Date.now() >= deadline) {
+        const location = namespace ? ` in ${namespace}` : '';
+        throw new Error(
+          `Timed out waiting for ${group}/${version} ${plural}/${name}${location} condition=${conditionType} (${timeoutMs}ms)`,
+        );
+      }
+
       try {
-        const result = namespace
-          ? await api.getNamespacedCustomObject({ group, version, namespace, plural, name })
-          : await api.getClusterCustomObject({ group, version, plural, name });
+        const result: unknown = namespace
+          ? await api.getNamespacedCustomObject({ group, name, namespace, plural, version })
+          : await api.getClusterCustomObject({ group, name, plural, version });
 
         const obj = result as unknown as {
-          status?: { conditions?: Array<{ type: string; status: string }> };
+          status?: { conditions?: Array<{ status: string; type: string }> };
         };
-        const condition = obj.status?.conditions?.find((c) => c.type === conditionType);
+        const condition = obj.status?.conditions?.find((cond) => cond.type === conditionType);
 
-        if (condition?.status === 'True') return;
+        if (condition?.status === 'True') {
+          return;
+        }
       } catch (err) {
-        if (!isRetryableError(err)) throw err;
+        if (!isRetryableError(err)) {
+          throw err;
+        }
       }
 
       await sleep(Math.min(pollIntervalMs, deadline - Date.now()));
-    }
+      return poll();
+    };
 
-    throw new Error(
-      `Timed out waiting for ${group}/${version} ${plural}/${name}${namespace ? ` in ${namespace}` : ''} condition=${conditionType} (${timeoutMs}ms)`,
-    );
+    return poll();
   }
 }
-
-/** Retry a function with exponential backoff on retryable HTTP status codes. */
-export const withRetry = async <T>(
-  fn: () => Promise<T>,
-  label = 'API call',
-  maxRetries = MAX_RETRIES,
-): Promise<T> => {
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    try {
-      return await fn();
-    } catch (err) {
-      if (attempt === maxRetries || !isRetryableError(err)) throw err;
-
-      const delay = BASE_DELAY_MS * Math.pow(2, attempt) + Math.random() * 500;
-      const statusCode = (err as { statusCode?: number }).statusCode ?? 'unknown';
-      console.warn(
-        `${label}: retryable error (status ${statusCode}), attempt ${attempt + 1}/${maxRetries}, retrying in ${Math.round(delay)}ms`,
-      );
-      await sleep(delay);
-    }
-  }
-  throw new Error('Unreachable');
-};
-
-const isRetryableError = (err: unknown): boolean => {
-  const status = (err as { statusCode?: number }).statusCode;
-  return typeof status === 'number' && RETRYABLE_STATUS_CODES.has(status);
-};
-
-const sleep = (ms: number): Promise<void> =>
-  new Promise((resolve) => setTimeout(resolve, Math.max(0, ms)));
-
-export const requireEnv = (name: string): string => {
-  const value = process.env[name];
-  if (!value) throw new Error(`Missing required environment variable: ${name}`);
-  return value;
-};

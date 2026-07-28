@@ -7,9 +7,9 @@
  */
 
 import { execSync } from 'node:child_process';
-import { appendFileSync } from 'node:fs';
 
 import { requireEnv } from '../kube-client';
+import { setOutput } from '../utils';
 
 const execSafe = (cmd: string): string => {
   try {
@@ -30,55 +30,56 @@ const parseJsonArray = (raw: string): string[] => {
 
 const main = async (): Promise<void> => {
   const clusterName = requireEnv('CLUSTER_NAME');
-  const ghOutput = process.env.GITHUB_OUTPUT!;
-
   const cisId = execSafe(
     "ibmcloud cis instances --output json 2>/dev/null | jq -r '.[0].crn // empty'",
   );
 
-  let dnsClusters: string[] = [];
-  if (cisId) {
+  const dnsClusters = ((): string[] => {
+    if (!cisId) {
+      return [] as string[];
+    }
     execSafe(`ibmcloud cis instance-set "${cisId}" 2>/dev/null`);
     const zonesRaw = execSafe('ibmcloud cis domains --output json 2>/dev/null');
     const zones = parseJsonArray(zonesRaw);
 
-    for (const zone of zones) {
+    return zones.reduce<string[]>((acc, zone) => {
       const zoneId =
         typeof zone === 'object' && zone !== null ? (zone as Record<string, string>).id : '';
-      if (!zoneId) continue;
+      if (!zoneId) {
+        return acc;
+      }
 
       const recordsRaw = execSafe(
         `ibmcloud cis dns-records "${zoneId}" --output json 2>/dev/null | jq -c --arg cn "${clusterName}" '[.[] | select(.type == "A" or .type == "CNAME") | .name | capture("^api\\\\.(?<name>[^.]+)\\\\.") | .name | select(startswith($cn))] | unique'`,
       );
-      dnsClusters = [...new Set([...dnsClusters, ...parseJsonArray(recordsRaw)])];
-    }
-  }
+      return [...new Set([...acc, ...parseJsonArray(recordsRaw)])];
+    }, []);
+  })();
 
   const roksRaw = execSafe(
     `ibmcloud oc cluster ls --output json 2>/dev/null | jq -c --arg cn "${clusterName}" '[.[] | select(.name | startswith($cn)) | .name] // []'`,
   );
   const roksClusters = parseJsonArray(roksRaw);
 
-  const allClusters = [...new Set([...dnsClusters, ...roksClusters])].sort();
+  const allClusters = [...new Set([...dnsClusters, ...roksClusters])].sort((a, b) =>
+    a.localeCompare(b),
+  );
   const count = allClusters.length;
 
-  let detectionAvailable = 'true';
+  const detectionAvailable = !cisId && count === 0 ? 'false' : 'true';
   if (!cisId) {
     console.error(
       '::warning::No CIS instance found — IPI cluster detection via DNS is unavailable (ROKS-only detection still applied). Safety gate will be skipped; proceed carefully.',
     );
-    if (count === 0) {
-      detectionAvailable = 'false';
-    }
   }
 
   console.log(`Distinct clusters matching prefix '${clusterName}': ${JSON.stringify(allClusters)}`);
-  appendFileSync(ghOutput, `clusters=${JSON.stringify(allClusters)}\n`);
-  appendFileSync(ghOutput, `count=${count}\n`);
-  appendFileSync(ghOutput, `detection_available=${detectionAvailable}\n`);
+  setOutput('clusters', JSON.stringify(allClusters));
+  setOutput('count', String(count));
+  setOutput('detection_available', detectionAvailable);
 };
 
-main().catch((err) => {
+void main().catch((err) => {
   console.error(`::error::${err instanceof Error ? err.message : err}`);
   process.exit(1);
 });

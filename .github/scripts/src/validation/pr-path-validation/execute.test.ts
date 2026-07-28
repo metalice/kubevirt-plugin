@@ -3,21 +3,21 @@ import { describe, it } from 'node:test';
 
 import type { Octokit } from '@octokit/rest';
 
-import { executePathValidation, reportPathValidationError } from './execute';
 import { HandledValidationError } from './errors';
+import { executePathValidation, reportPathValidationError } from './execute';
 import type { PathValidationConfig } from './types';
 
 const TEST_CONFIG: PathValidationConfig = {
+  commandName: '/test-approved',
+  displayName: 'Test validation',
   exactPaths: [],
-  pathPrefixes: ['protected/'],
-  labels: { alert: 'alert', block: 'block', reviewed: 'reviewed', skip: 'skip' },
   labelMeta: {
     alert: { color: 'f59e0b', description: 'alert' },
     block: { color: 'b60205', description: 'block' },
   },
+  labels: { alert: 'alert', block: 'block', reviewed: 'reviewed', skip: 'skip' },
+  pathPrefixes: ['protected/'],
   statusContext: 'test-validation',
-  displayName: 'Test validation',
-  commandName: '/test-approved',
 };
 
 const buildStatusDescription = (): string => 'unused';
@@ -40,7 +40,7 @@ describe('executePathValidation', () => {
       executePathValidation(
         {
           baseBranch: 'main',
-          config: { token: 'x', owner: 'kubevirt-ui', repo: 'kubevirt-plugin' },
+          config: { owner: 'kubevirt-ui', repo: 'kubevirt-plugin', token: 'x' },
           files: [{ filename: 'protected/foo.ts' }],
           headSha: 'abc123',
           octokit,
@@ -59,7 +59,7 @@ describe('reportPathValidationError', () => {
   it('does not throw', async () => {
     await assert.doesNotReject(
       reportPathValidationError(
-        { token: 'x', owner: 'kubevirt-ui', repo: 'kubevirt-plugin' },
+        { owner: 'kubevirt-ui', repo: 'kubevirt-plugin', token: 'x' },
         'abc123',
         TEST_CONFIG,
         new Error('boom'),

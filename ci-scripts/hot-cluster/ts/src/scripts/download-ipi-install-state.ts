@@ -8,20 +8,21 @@
  */
 
 import { execSync } from 'node:child_process';
-import { appendFileSync, mkdirSync } from 'node:fs';
+import { mkdirSync } from 'node:fs';
 
 import { requireEnv } from '../kube-client';
+import { setOutput } from '../utils';
 
 const main = async (): Promise<void> => {
   const clusterName = requireEnv('CLUSTER_NAME');
   const repo = requireEnv('GITHUB_REPOSITORY');
   const runnerTemp = process.env.RUNNER_TEMP ?? '/tmp';
-  let setupRunId = process.env.SETUP_RUN_ID ?? '';
+  const setupRunId = await (async (): Promise<string> => {
+    const provided = process.env.SETUP_RUN_ID ?? '';
+    if (provided) {
+      return provided;
+    }
 
-  const installDir = `${runnerTemp}/ipi-install`;
-  mkdirSync(installDir, { recursive: true });
-
-  if (!setupRunId) {
     console.log(
       `No setup run ID provided. Looking up latest successful setup run for cluster '${clusterName}'...`,
     );
@@ -35,22 +36,25 @@ const main = async (): Promise<void> => {
       );
 
       const runs = JSON.parse(output) as Array<{ databaseId: number; displayTitle: string }>;
-      const match = runs.find((r) => r.displayTitle.includes(`[${clusterName}]`));
-      setupRunId = match ? String(match.databaseId) : '';
+      const match = runs.find((run) => run.displayTitle.includes(`[${clusterName}]`));
+      return match ? String(match.databaseId) : '';
     } catch {
-      setupRunId = '';
+      return '';
     }
+  })();
 
-    if (!setupRunId) {
-      console.log(
-        `::warning::No successful IPI setup run found for cluster '${clusterName}' and no ipi_setup_run_id provided. ` +
-          'openshift-install destroy will be skipped; the VPC-resource sweep step will still run.',
-      );
-      process.exit(1);
-    }
+  const installDir = `${runnerTemp}/ipi-install`;
+  mkdirSync(installDir, { recursive: true });
 
-    console.log(`Using latest successful setup run for '${clusterName}': ${setupRunId}`);
+  if (!setupRunId) {
+    console.log(
+      `::warning::No successful IPI setup run found for cluster '${clusterName}' and no ipi_setup_run_id provided. ` +
+        'openshift-install destroy will be skipped; the VPC-resource sweep step will still run.',
+    );
+    process.exit(1);
   }
+
+  console.log(`Using latest successful setup run for '${clusterName}': ${setupRunId}`);
 
   console.log(`Downloading IPI install state from run ${setupRunId}...`);
   execSync(
@@ -63,10 +67,10 @@ const main = async (): Promise<void> => {
   console.log('Downloaded files:');
   execSync(`ls -la "${installDir}/"`, { stdio: 'inherit' });
 
-  appendFileSync(process.env.GITHUB_OUTPUT!, `install_dir=${installDir}\n`);
+  setOutput('install_dir', installDir);
 };
 
-main().catch((err) => {
+void main().catch((err) => {
   console.error(`::error::${err instanceof Error ? err.message : err}`);
   process.exit(1);
 });

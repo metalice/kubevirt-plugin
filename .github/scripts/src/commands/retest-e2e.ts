@@ -13,14 +13,37 @@
 import { Octokit } from '@octokit/rest';
 
 import { requireEnv } from '../utils';
+
 import { getRepoContext } from '../shared/actions-context';
-import { reactToComment, enforceCommentTrust } from '../shared/command-helpers';
+import { enforceCommentTrust, reactToComment } from '../shared/command-helpers';
 import { dispatchWorkflow } from '../shared/dispatch';
-import { removeLabel } from '../github-comments';
-import { setOutput, failStep } from '../shared/output';
+import { failStep, setOutput } from '../shared/output';
+import type { CommandContext } from './command-registry';
+import { buildRetestReport, reportRetestE2EError } from './retest-e2e-helpers';
+
+const liftE2EHold = async (
+  octokit: Octokit,
+  owner: string,
+  repo: string,
+  prNumber: number,
+): Promise<void> => {
+  try {
+    await octokit.issues.removeLabel({ issue_number: prNumber, name: 'e2e-hold', owner, repo });
+    console.log('Removed e2e-hold label -- /retest-e2e lifts any prior /hold-e2e.');
+    setOutput('was_held', 'true');
+  } catch (err) {
+    if ((err as { status?: number }).status === 404) {
+      setOutput('was_held', 'false');
+    } else {
+      setOutput('removal_failed', 'true');
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`Could not remove e2e-hold label: ${msg}`);
+    }
+  }
+};
 
 const main = async (): Promise<void> => {
-  const token = process.env.BOT_TOKEN || requireEnv('GITHUB_TOKEN');
+  const token = process.env.BOT_TOKEN ?? requireEnv('GITHUB_TOKEN');
   const { owner, repo } = getRepoContext();
   const prNumber = Number(requireEnv('PR_NUMBER'));
   const commentId = Number(requireEnv('COMMENT_ID'));
@@ -35,9 +58,9 @@ const main = async (): Promise<void> => {
       return;
     }
 
-    const { data: pr } = await octokit.pulls.get({ owner, repo, pull_number: prNumber });
-    const headSha = pr.head.sha;
-    const baseRef = pr.base.ref;
+    const { data: pullRequest } = await octokit.pulls.get({ owner, pull_number: prNumber, repo });
+    const headSha = pullRequest.head.sha;
+    const baseRef = pullRequest.base.ref;
 
     console.log(
       `/retest-e2e requested by ${author} on PR #${prNumber} (HEAD: ${headSha}, base: ${baseRef})`,
@@ -45,23 +68,24 @@ const main = async (): Promise<void> => {
 
     const lookbackDate = new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString();
     const runs = await octokit.paginate(octokit.actions.listWorkflowRuns, {
+      created: `>=${lookbackDate}`,
       owner,
+      per_page: 100,
       repo,
       workflow_id: 'hot-cluster-e2e.yml',
-      created: `>=${lookbackDate}`,
-      per_page: 100,
     });
 
-    const candidates = runs.filter((r) => {
-      if (r.event === 'workflow_dispatch') {
-        return r.display_title?.includes(`@ PR#${prNumber} retest`);
+    const candidates = runs.filter((run) => {
+      if (run.event === 'workflow_dispatch') {
+        return run.display_title?.includes(`@ PR#${prNumber} retest`);
       }
-      const prMatch = r.pull_requests?.some((p) => p.number === prNumber);
-      const shaMatch = r.head_sha === headSha;
-      return prMatch || shaMatch;
+      const prMatch = run.pull_requests?.some((pull) => pull.number === prNumber);
+      const shaMatch = run.head_sha === headSha;
+      return prMatch ?? shaMatch;
     });
 
-    const runningCandidate = candidates.find((c) => c.status !== 'completed') ?? null;
+    const runningCandidate =
+      candidates.find((candidate) => candidate.status !== 'completed') ?? null;
 
     if (runningCandidate) {
       console.warn(
@@ -76,90 +100,38 @@ const main = async (): Promise<void> => {
     await reactToComment(octokit, owner, repo, commentId, 'rocket');
 
     await dispatchWorkflow(octokit, {
-      owner,
-      repo,
-      workflowId: 'hot-cluster-e2e.yml',
-      ref: 'main',
       inputs: {
-        pr_number: String(prNumber),
         base_ref: baseRef,
+        pr_number: String(prNumber),
         skip_pool_check: 'true',
       },
+      owner,
+      ref: 'main',
+      repo,
+      workflowId: 'hot-cluster-e2e.yml',
     });
 
     console.log(`Fresh run dispatched for PR #${prNumber} (base_ref=${baseRef}).`);
     setOutput('dispatched', 'true');
     setOutput('was_running', runningCandidate ? 'true' : 'false');
 
-    // Lift /hold-e2e hold
+    await liftE2EHold(octokit, owner, repo, prNumber);
+
+    const body = buildRetestReport(owner, repo, !!runningCandidate);
     try {
-      await octokit.issues.removeLabel({ owner, repo, issue_number: prNumber, name: 'e2e-hold' });
-      console.log('Removed e2e-hold label -- /retest-e2e lifts any prior /hold-e2e.');
-      setOutput('was_held', 'true');
-    } catch (err) {
-      if ((err as { status?: number }).status === 404) {
-        setOutput('was_held', 'false');
-      } else {
-        setOutput('removal_failed', 'true');
-        const msg = err instanceof Error ? err.message : String(err);
-        console.error(`Could not remove e2e-hold label: ${msg}`);
-      }
-    }
-
-    // Report dispatch
-    const wasRunning = !!runningCandidate;
-    const wasHeld = setOutput('was_held', '') === undefined; // already set above
-    const reason = wasRunning
-      ? 'A Hot Cluster E2E run was already in progress for this PR, so `/retest-e2e` cancelled it and dispatched a fresh one instead'
-      : '`/retest-e2e` dispatched a fresh Hot Cluster E2E run for this PR, merged with the current base branch tip';
-
-    const serverUrl = process.env.GITHUB_SERVER_URL ?? 'https://github.com';
-    const body = [
-      `🚀 ${reason} (this also re-provisions the cluster automatically if it was torn down).`,
-      '',
-      `See the [Actions tab](${serverUrl}/${owner}/${repo}/actions/workflows/hot-cluster-e2e.yml) for progress.`,
-    ].join('\n');
-
-    try {
-      await octokit.issues.createComment({ owner, repo, issue_number: prNumber, body });
+      await octokit.issues.createComment({ body, issue_number: prNumber, owner, repo });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.warn(`Could not comment: ${msg}`);
     }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    setOutput('unexpected_error', 'true');
-    setOutput('error_message', msg);
-
-    // Report error on PR
-    try {
-      await octokit.issues.createComment({
-        owner,
-        repo,
-        issue_number: prNumber,
-        body: [
-          '⚠️ `/retest-e2e` hit an unexpected error and did not re-run the Hot Cluster E2E workflow:',
-          '',
-          '```',
-          msg,
-          '```',
-          '',
-          'This usually means the `kubevirt-plugin-bot` GitHub App token (BOT_APP_ID / BOT_APP_PRIVATE_KEY) is misconfigured or the app was uninstalled — a maintainer should check it. ' +
-            'In the meantime, re-run the failed workflow manually from the Actions tab.',
-        ].join('\n'),
-      });
-    } catch {
-      /* best effort */
-    }
-
-    failStep(`Unexpected error while processing /retest-e2e: ${msg}`);
+    await reportRetestE2EError(octokit, owner, repo, prNumber, msg);
   }
 };
 
-import type { CommandContext } from './dispatcher';
-
 export const executeRetestE2E = async (ctx: CommandContext): Promise<void> => {
-  process.env.BOT_TOKEN = process.env.BOT_TOKEN || '';
+  process.env.BOT_TOKEN = process.env.BOT_TOKEN ?? '';
   process.env.PR_NUMBER = String(ctx.prNumber);
   process.env.COMMENT_ID = String(ctx.commentId);
   process.env.COMMENT_AUTHOR = ctx.author;
@@ -168,5 +140,5 @@ export const executeRetestE2E = async (ctx: CommandContext): Promise<void> => {
 };
 
 if (require.main === module) {
-  main().catch((err) => failStep(err instanceof Error ? err.message : String(err)));
+  void main().catch((err) => failStep(err instanceof Error ? err.message : String(err)));
 }
